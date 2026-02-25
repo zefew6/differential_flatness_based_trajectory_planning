@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="test_scene">
+    <!-- 模型的世界定义 -->
+    <worldbody>
+        <!-- 地面 -->
+        <geom name="ground" type="plane" size="0 0 0.1" rgba="0.8 0.8 0.8 1"/>
+
+        <!-- 障碍物：矩形 box -->
+        <geom name="box1" type="box" size="0.5 0.5 0.5" pos="2 2 0.5" rgba="1 0 0 1"/>
+
+        <!-- 障碍物：球体 -->
+        <geom name="sphere1" type="sphere" size="0.5" pos="4 2 0.5" rgba="0 1 0 1"/>
+
+        <!-- 障碍物：圆柱体 -->
+        <geom name="cylinder1" type="cylinder" size="0.5 1.0" pos="6 6 0.5" rgba="0 0 1 1"/>
+
+
+        <!-- 自由空间中的小盒子（没有障碍物的区域） -->
+        <geom name="box2" type="box" size="0.3 0.3 0.3" pos="4 7 0.15" rgba="0 1 1 1"/>
+    </worldbody>
+</mujoco>

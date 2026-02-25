@@ -1,0 +1,14 @@
+env/
+c_generated_code/
+MUJOCO_LOG.TXT
+acados_ocp.json
+.vscode/
+__pycache__/
+FORCES*
+c29bd*
+*.forces
+cleanrl
+tensorboard
+acados/
+m0.egg-info/
+

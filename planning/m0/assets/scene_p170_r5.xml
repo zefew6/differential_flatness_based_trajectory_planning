@@ -1,0 +1,1344 @@
+
+<mujoco>
+  <compiler meshdir="asset" texturedir="asset" angle="degree" coordinate="local"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+  <statistic meansize=".05"/>
+
+  <visual>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <quality shadowsize="4096"/>
+    <map stiffness="700" shadowscale="0.5" fogstart="1" fogend="15" zfar="40" haze="1"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture name="texplane" type="2d" builtin="checker" rgb1="0 0 0" rgb2="0 0 0"
+      width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
+
+    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="10 10" texuniform="true"/>
+  </asset>
+
+
+  <default>
+        <joint damping=".03" actuatorfrcrange="-0.5 0.5"/>
+        <default class="wheel">
+            <geom type="cylinder" size=".03 .01" rgba=".1 1 .1 1"/>
+        </default>
+        <default class="decor">
+            <site type="box" rgba=".5 1 .5 1"/>
+        </default>
+    </default>
+
+  <worldbody>
+
+    <geom name="ground" type="plane" size="0 0 1" pos="0 0 0" quat="1 0 0 0" material="matplane" condim="1"/>
+    <camera name="topdown" pos="0 0 6" quat="1 0 0 0"/>
+
+    
+
+<body name="p0" pos="1.3520758459381326 -0.04732788919101161 0.02401990644072447">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p1" pos="-1.0469755028753134 1.2376404418347553 0.020262046734766045">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p2" pos="0.24810336776359265 -1.377615655173521 0.02353353329639257">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p3" pos="-0.9173659639547928 0.9577626226314799 0.02214945081027335">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p4" pos="-0.7395138648239454 0.9288100893753177 0.022707890279324128">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p5" pos="0.9319787653827394 0.8215369493460822 0.020507355073907562">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p6" pos="0.7061131691423372 0.3415651235299839 0.02305474138545338">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p7" pos="-0.6185077746938189 -0.747140996695655 0.020580576578912765">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p8" pos="-0.21313981672049653 -0.49042070442456376 0.020534954985252655">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p9" pos="0.15825335436490207 -1.0712547916193556 0.023139859429951448">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p10" pos="-1.0483665875260182 -0.9136392935586979 0.02246640821833365">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p11" pos="1.2036290807711434 -0.6564455190728428 0.021719298448065166">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p12" pos="0.6397715625954148 0.0028545832510993296 0.02363661840180097">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p13" pos="-0.04423531817942106 1.0032399466795434 0.020939361116398634">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p14" pos="-1.1920480923883126 0.2882915175495875 0.021220947014544675">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p15" pos="-0.055559819957493595 -0.7695382141904548 0.02044790825336219">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p16" pos="-0.7984774638238574 0.8997788354015741 0.022737137488453938">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p17" pos="-1.1080199780844169 -0.9440669967291945 0.020615308918786688">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p18" pos="1.054165920389499 0.8771192869608928 0.024457687650487503">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p19" pos="-0.8824567497988541 -1.2355105333319016 0.0248697113360095">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p20" pos="1.2011910666815617 -1.00430619791252 0.022877280182495074">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p21" pos="0.9932836443759085 -0.9404865469599772 0.023180388965646455">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p22" pos="-0.6816214189922116 1.3602498535146208 0.022482689774057756">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p23" pos="-0.19894505899537385 0.8248890996604814 0.024665362428502317">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p24" pos="-0.8821818220999567 0.43689668903819623 0.021911887921835335">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p25" pos="-0.9210588663763054 -0.23665480592829558 0.02202256553155752">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p26" pos="0.4963954404482931 -0.4217740387062733 0.021454625672279907">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p27" pos="1.0365956884315528 -1.2529913603416973 0.023896873568899135">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p28" pos="-0.003130758951481738 -0.9970254663523004 0.0244352796927887">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p29" pos="0.10576403592076722 -0.7447165690392866 0.0234821562287058">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p30" pos="1.1060144154238665 0.2884439982935203 0.02466292541224984">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p31" pos="0.606175506084552 -0.8310580227211694 0.02069170600942174">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p32" pos="-0.5656274180453253 -0.1872367681968803 0.02154448332988449">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p33" pos="0.8793502370659532 -0.5620555093596681 0.020950944790977193">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p34" pos="-0.14259041926600324 0.43793649888824193 0.024278312861324314">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p35" pos="0.9750261852319855 0.9773605224599717 0.020090969261094434">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p36" pos="-0.6209734082804605 0.5164857216529104 0.023137436501803485">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p37" pos="-0.40536154521731216 -0.8196853764375884 0.023301483585067877">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p38" pos="0.9481024556060653 -1.2766314752689023 0.020751224053919614">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p39" pos="-0.6838095571340841 -0.12035038317909175 0.02496987856289289">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p40" pos="-0.9242193730819828 1.0112975018874182 0.02024521249937858">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p41" pos="-0.6641345619235632 -0.34434783905270705 0.02100997034461025">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p42" pos="0.39227287006044564 -1.1011212966957817 0.02201242134206593">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p43" pos="0.2242903048868632 -1.1648918337266023 0.023548715285064345">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p44" pos="-1.1837858328109043 0.5858894606696856 0.02122710493879327">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p45" pos="-0.8139842746913766 1.057823604432615 0.020999668298464117">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p46" pos="-0.5265093782666651 1.0694702554694775 0.020422858572196178">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p47" pos="0.3299150210521806 -0.15342332902348654 0.022936225239283504">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p48" pos="0.36048818044044495 0.8337901717167564 0.021614144506520053">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p49" pos="-1.2868235652896591 0.9039058230271655 0.020163622517139032">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p50" pos="-1.0536290781347246 -0.5747633467565274 0.0227200808716578">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p51" pos="0.7285172112964271 -0.8004392526450885 0.022735382461005628">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p52" pos="-0.3965318084065288 0.4424872746224757 0.02285898099228139">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p53" pos="-1.1561608935507013 -0.9028966479067895 0.020236364333591796">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p54" pos="0.9571728956281245 0.11517046297729294 0.02164627725848612">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p55" pos="0.16685911543917364 1.0231290415579193 0.020133561253097742">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p56" pos="-1.3319897391342472 0.5155442122991989 0.024329864692093046">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p57" pos="0.7778276607999217 0.7506587241022569 0.021153491997115383">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p58" pos="-0.01251392287838371 1.0551081930196116 0.021179659932213244">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p59" pos="-1.3414940016142203 -0.6706092130829373 0.02385113844661847">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p60" pos="-0.1881242827291123 0.6924143688401005 0.02050225099126551">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p61" pos="-0.8855262552723723 0.4683045972960449 0.02095350848421523">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p62" pos="0.4127846816086831 -1.1289118644770615 0.021675425768295238">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p63" pos="-1.271156112034965 -0.14071168441555337 0.024912756307324327">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p64" pos="0.02009148310665476 -1.3555910126911423 0.022994678087937846">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p65" pos="0.12503842399978415 0.07530794104598937 0.023278906193772538">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p66" pos="0.03046486245297797 -0.4655642353424071 0.021468540155364896">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p67" pos="0.6917142925093787 -1.357661309593987 0.02429041663855109">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p68" pos="-0.8041295647464497 0.4291943958762703 0.023011313315112834">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p69" pos="-0.10448626763358893 1.144862989748988 0.021123613315083813">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p70" pos="0.4260895234210882 0.6427038927105313 0.020019247346729347">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p71" pos="-0.2271019126403273 0.6142539175167512 0.021021022302036018">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p72" pos="-1.366655227674001 1.0807694908832506 0.02417322412062151">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p73" pos="0.7473077569951894 -1.378742998320895 0.020379409169113894">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p74" pos="-1.0944021219327156 0.5781316458751817 0.021525235018107092">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p75" pos="-0.518592726205364 -0.5789791351966431 0.023546562272350382">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p76" pos="-0.56721197871398 -0.6383950645644855 0.021511560144293857">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p77" pos="0.6515004869513557 -0.20435391157452876 0.022562341292128724">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p78" pos="0.13011448744618703 -1.2921062249364832 0.023553401981857302">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p79" pos="-1.0848290675229224 1.3187748956844145 0.022267054387113436">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p80" pos="-0.8700185423520083 0.4075287754853558 0.020642299205081274">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p81" pos="-0.7776830288642768 -0.40655731117548943 0.021311149717743217">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p82" pos="0.5398846522123826 -0.25133273753918495 0.022455409340185778">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p83" pos="0.24501968341831093 1.1908456439070871 0.023025583996417614">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p84" pos="-0.20141690885832952 -1.1255219651968653 0.02085980371788335">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p85" pos="0.9204127437123524 -1.0193914147367193 0.022679290604765236">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p86" pos="0.759439190885514 -1.1072235374169639 0.023970098366760152">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p87" pos="-1.189641717524989 -1.1882748061421373 0.020326298595288245">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p88" pos="-0.42066011894181166 0.016291935249831413 0.022746104883576927">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p89" pos="-1.3130599641589058 -1.1008235294944821 0.022051006822056046">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p90" pos="-0.2079978217598355 -1.2409069323205941 0.023844034801585076">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p91" pos="-1.0007526437942538 -1.1656236346026618 0.023187338216808538">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p92" pos="-0.9615122298993648 -0.23240386562167026 0.023744577760981832">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p93" pos="-0.9665589633928799 0.6219620288928072 0.020240108105565754">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p94" pos="-1.2570404467586982 0.13225491098973396 0.022338040379590324">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p95" pos="-0.3999313865572731 -0.11704081699148006 0.020570700765939656">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p96" pos="0.7609712620020987 -0.6413363169866992 0.02477400663439214">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p97" pos="0.5967406300864093 -0.8780137236006988 0.023396838644315392">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p98" pos="-0.9474664920104128 -1.2944173455354586 0.022118109271533765">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p99" pos="-1.308609156162489 0.4885067194401267 0.022642286689122756">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p100" pos="-0.5225618585044711 -0.17249218436961522 0.023645260046423408">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p101" pos="-0.3110521847592562 -0.9686377358775896 0.020286861723029643">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p102" pos="-0.7115387727835089 0.7497620010935422 0.02307488557506323">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p103" pos="-1.1883272715624118 1.3259222330916223 0.023718873798714894">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p104" pos="-0.20229293326332742 1.1974581558669692 0.02192684701232126">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p105" pos="-0.5647622599893155 0.5077691669266753 0.021452841817855253">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p106" pos="0.009428058856914001 -0.4242234679322051 0.024105361458973747">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p107" pos="-1.0521724935907468 0.02993662425650001 0.024662501419342068">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p108" pos="0.040860015168888486 0.8259134074538008 0.022945727521165464">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p109" pos="1.2101858950769806 -0.8040649865477275 0.02130559935314895">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p110" pos="-0.9660364826663722 0.32050497296920355 0.023781553900809382">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p111" pos="1.3955096859401972 -0.9110622552972465 0.023987516212787285">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p112" pos="0.31878050623906695 1.1539777899685548 0.021496841412417513">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p113" pos="-1.3514975664654676 -0.9374492175996205 0.02347429145836582">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p114" pos="0.12462299255988185 -0.13135217391242526 0.02442362363134433">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p115" pos="-0.8263558536647377 -0.3738176728055813 0.021184171173878354">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p116" pos="-0.930609405628017 -0.49082351712379124 0.022370151666929933">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p117" pos="0.09157397796074163 0.11725861715772656 0.020555227151642375">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p118" pos="-0.5682100065258002 -0.06920284769754725 0.023765090029639547">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p119" pos="0.24959861727809374 0.017352521361159834 0.02295719956468112">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p120" pos="0.31338512999727475 0.25575350219173676 0.02261531295954236">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p121" pos="-0.13542214100632588 -0.7407435569742824 0.021650695017150407">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p122" pos="0.2945383518605609 -0.6104600472962537 0.020763941963766203">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p123" pos="0.3651320002100109 -0.825438320345119 0.02219151587108501">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p124" pos="1.273330517445586 -0.892693949176167 0.02235498317958426">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p125" pos="0.20422689625863022 0.8162213470010418 0.020125807002060316">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p126" pos="0.4427263235682335 0.8824054631257168 0.021955861886548612">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p127" pos="1.1046533902660047 -0.43646533229911755 0.024314421536604243">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p128" pos="0.9714193308595798 1.0397612838970534 0.021103020484562113">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p129" pos="-0.6557716352705206 1.0904186931913817 0.021782373535050376">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p130" pos="0.2254909210297873 -0.7954838254027086 0.02431486384665505">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p131" pos="1.1722395485162314 0.8438576953461108 0.02260510678979915">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p132" pos="-0.6610672926803416 -1.1247297761470247 0.02464880379100251">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p133" pos="1.3893794414913567 -0.9272394708041956 0.02133813837640944">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p134" pos="-1.3414038050656243 0.33882049024728134 0.023628148180498822">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p135" pos="0.5287358525080694 -0.7558868837831735 0.022122309030149973">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p136" pos="-0.09030270139118435 0.04340074769965829 0.024560010942226387">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p137" pos="0.39885413961403526 -0.9459966714573873 0.023209687017938557">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p138" pos="0.7682728103899983 -0.001285927370551887 0.021855936212892623">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p139" pos="-0.6545269383069996 -0.18267567027271414 0.023401499851781457">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p140" pos="0.2150832741399269 0.04023031996907056 0.02001172679149922">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p141" pos="1.1457533120781194 0.021484474347287952 0.02307869945745534">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p142" pos="-0.40274417084757486 0.8334464899090506 0.020328560194310955">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p143" pos="-0.39491696299362933 -1.2517417207084283 0.02170232629220534">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p144" pos="0.6009092655775232 0.4107558205614694 0.022107370227957085">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p145" pos="-0.6556427645237378 -1.299019776421508 0.02064728725963128">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p146" pos="1.1160166785348191 0.9793323406782739 0.020974531046661006">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p147" pos="-0.4557825254367469 1.179025788235363 0.02373328040859056">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p148" pos="-0.7604652735033853 -0.13444443603785694 0.02294364817297769">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p149" pos="-0.3621428933858797 0.17236750045847726 0.024335073768127408">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p150" pos="-0.20831020871575845 -1.2238265139088738 0.024163705329922944">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p151" pos="-0.15287272561975773 0.993935752544433 0.024700269096602362">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p152" pos="1.1399078033605279 1.1168577080544937 0.02308815808416377">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p153" pos="0.24012747935725165 -0.04195152217098452 0.020967314244378022">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p154" pos="-0.06583959921202265 -0.729730983735158 0.021571167122150743">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p155" pos="0.7951165064611532 1.177521979835575 0.02122484431146205">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p156" pos="-0.7975642405852666 -0.9226436916709615 0.024153297925451542">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p157" pos="-1.345641267587914 0.66107080709086 0.02421358229479221">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p158" pos="-0.5930358640104079 0.5863351270170962 0.02120777113700777">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p159" pos="1.3334374142813972 0.9281392892207481 0.02013441145353418">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p160" pos="1.2801138104540826 -0.3639303854528735 0.0244388720814616">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p161" pos="1.2087302749529014 -0.12006490540669668 0.02134814894317735">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p162" pos="1.244630024010248 -0.9710315481994032 0.024424827862344786">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p163" pos="0.9098778202214488 -0.5762614729163141 0.023095721228095188">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p164" pos="-1.0424036138206305 -0.14447211994452736 0.024906466948180953">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p165" pos="0.42459062572566375 -0.3804893604825248 0.022875241145698708">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p166" pos="-0.022759530194023325 1.0087884245850152 0.02272594380727255">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p167" pos="-0.8971833585595899 -0.7777607036164935 0.023487184820223557">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p168" pos="1.2864502372444808 -0.03890464366125124 0.021060299065041033">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+<body name="p169" pos="-0.40865141664519744 -0.6965519865628508 0.021925774371160243">
+      <freejoint/>
+      <geom type="box" size="0.03 0.03 0.03" rgba="0.8 0.5 0.6 1" friction="1.0 0.1 0.001" density="5"/>
+</body>
+
+
+
+    
+
+
+            
+            <body name="0" pos="2.0 1.0 0.5">
+
+            <freejoint/>
+            <geom name="base_0"
+                    type="cylinder"
+                    pos="0 0 0.03"
+                    size="0.15 0.03"    
+                    rgba="1.0 0.6 0.2 1"/>
+
+            <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1" />
+
+            <geom name="front wheel_0" pos="0.12 0 -.015" type="sphere" size=".015" condim="1" priority="1"/>
+
+            <body name="left wheel_0" pos="-.02 .16 0" zaxis="0 1 0">
+            <joint name="left_0"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+            <body name="right wheel_0" pos="-.02 -.16 0" zaxis="0 1 0">
+            <joint name="right_0"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+        </body>
+    
+
+
+            
+            <body name="1" pos="-2.0 -1.0 0.5">
+
+            <freejoint/>
+            <geom name="base_1"
+                    type="cylinder"
+                    pos="0 0 0.03"
+                    size="0.15 0.03"    
+                    rgba="1.0 0.6 0.2 1"/>
+
+            <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1" />
+
+            <geom name="front wheel_1" pos="0.12 0 -.015" type="sphere" size=".015" condim="1" priority="1"/>
+
+            <body name="left wheel_1" pos="-.02 .16 0" zaxis="0 1 0">
+            <joint name="left_1"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+            <body name="right wheel_1" pos="-.02 -.16 0" zaxis="0 1 0">
+            <joint name="right_1"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+        </body>
+    
+
+
+            
+            <body name="2" pos="-3.0 -2.0 0.5">
+
+            <freejoint/>
+            <geom name="base_2"
+                    type="cylinder"
+                    pos="0 0 0.03"
+                    size="0.15 0.03"    
+                    rgba="1.0 0.6 0.2 1"/>
+
+            <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1" />
+
+            <geom name="front wheel_2" pos="0.12 0 -.015" type="sphere" size=".015" condim="1" priority="1"/>
+
+            <body name="left wheel_2" pos="-.02 .16 0" zaxis="0 1 0">
+            <joint name="left_2"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+            <body name="right wheel_2" pos="-.02 -.16 0" zaxis="0 1 0">
+            <joint name="right_2"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+        </body>
+    
+
+
+            
+            <body name="3" pos="2.0 -1.0 0.5">
+
+            <freejoint/>
+            <geom name="base_3"
+                    type="cylinder"
+                    pos="0 0 0.03"
+                    size="0.15 0.03"    
+                    rgba="1.0 0.6 0.2 1"/>
+
+            <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1" />
+
+            <geom name="front wheel_3" pos="0.12 0 -.015" type="sphere" size=".015" condim="1" priority="1"/>
+
+            <body name="left wheel_3" pos="-.02 .16 0" zaxis="0 1 0">
+            <joint name="left_3"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+            <body name="right wheel_3" pos="-.02 -.16 0" zaxis="0 1 0">
+            <joint name="right_3"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+        </body>
+    
+
+
+            
+            <body name="4" pos="1.0 3.0 0.5">
+
+            <freejoint/>
+            <geom name="base_4"
+                    type="cylinder"
+                    pos="0 0 0.03"
+                    size="0.15 0.03"    
+                    rgba="1.0 0.6 0.2 1"/>
+
+            <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1" />
+
+            <geom name="front wheel_4" pos="0.12 0 -.015" type="sphere" size=".015" condim="1" priority="1"/>
+
+            <body name="left wheel_4" pos="-.02 .16 0" zaxis="0 1 0">
+            <joint name="left_4"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+            <body name="right wheel_4" pos="-.02 -.16 0" zaxis="0 1 0">
+            <joint name="right_4"/>
+            <geom class="wheel"/>
+            <site class="decor" size=".006 .025 .012"/>
+            <site class="decor" size=".025 .006 .012"/>
+            </body>
+
+        </body>
+    
+
+  
+  </worldbody>
+
+
+    
+
+<tendon>
+  <fixed name="forward_0">
+    <joint joint="left_0" coef=".5"/>
+    <joint joint="right_0" coef=".5"/>
+  </fixed>
+  <fixed name="turn_0">
+    <joint joint="left_0" coef="-.5"/>
+    <joint joint="right_0" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward_0" tendon="forward_0" ctrlrange="-1 1"/>
+  <motor name="turn_0" tendon="turn_0" ctrlrange="-1 1"/>
+</actuator>
+
+
+<sensor>
+    <jointactuatorfrc name="right_0" joint="right_0"/>
+    <jointactuatorfrc name="left_0" joint="left_0"/>
+</sensor>
+
+
+<tendon>
+  <fixed name="forward_1">
+    <joint joint="left_1" coef=".5"/>
+    <joint joint="right_1" coef=".5"/>
+  </fixed>
+  <fixed name="turn_1">
+    <joint joint="left_1" coef="-.5"/>
+    <joint joint="right_1" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward_1" tendon="forward_1" ctrlrange="-1 1"/>
+  <motor name="turn_1" tendon="turn_1" ctrlrange="-1 1"/>
+</actuator>
+
+
+<sensor>
+    <jointactuatorfrc name="right_1" joint="right_1"/>
+    <jointactuatorfrc name="left_1" joint="left_1"/>
+</sensor>
+
+
+<tendon>
+  <fixed name="forward_2">
+    <joint joint="left_2" coef=".5"/>
+    <joint joint="right_2" coef=".5"/>
+  </fixed>
+  <fixed name="turn_2">
+    <joint joint="left_2" coef="-.5"/>
+    <joint joint="right_2" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward_2" tendon="forward_2" ctrlrange="-1 1"/>
+  <motor name="turn_2" tendon="turn_2" ctrlrange="-1 1"/>
+</actuator>
+
+
+<sensor>
+    <jointactuatorfrc name="right_2" joint="right_2"/>
+    <jointactuatorfrc name="left_2" joint="left_2"/>
+</sensor>
+
+
+<tendon>
+  <fixed name="forward_3">
+    <joint joint="left_3" coef=".5"/>
+    <joint joint="right_3" coef=".5"/>
+  </fixed>
+  <fixed name="turn_3">
+    <joint joint="left_3" coef="-.5"/>
+    <joint joint="right_3" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward_3" tendon="forward_3" ctrlrange="-1 1"/>
+  <motor name="turn_3" tendon="turn_3" ctrlrange="-1 1"/>
+</actuator>
+
+
+<sensor>
+    <jointactuatorfrc name="right_3" joint="right_3"/>
+    <jointactuatorfrc name="left_3" joint="left_3"/>
+</sensor>
+
+
+<tendon>
+  <fixed name="forward_4">
+    <joint joint="left_4" coef=".5"/>
+    <joint joint="right_4" coef=".5"/>
+  </fixed>
+  <fixed name="turn_4">
+    <joint joint="left_4" coef="-.5"/>
+    <joint joint="right_4" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward_4" tendon="forward_4" ctrlrange="-1 1"/>
+  <motor name="turn_4" tendon="turn_4" ctrlrange="-1 1"/>
+</actuator>
+
+
+<sensor>
+    <jointactuatorfrc name="right_4" joint="right_4"/>
+    <jointactuatorfrc name="left_4" joint="left_4"/>
+</sensor>
+
+
+
+</mujoco>

@@ -1,0 +1,15 @@
+<mujoco model="simple_cali_scene_using_orthogonal_camera">
+  <option timestep="0.005" gravity="0 0 -9.81"/>
+
+  <worldbody>
+
+    <camera name="topdown" pos="0 0 6" quat="1 0 0 0"/>
+    
+    <geom name="ground" type="plane" size="5 5 0.1" rgba="0 0 0 1"/>
+
+    <geom name="box1" type="box"  pos="0.0 0.0 0.4" size="0.4 0.4 0.4" rgba="1 0 0 1"/>
+
+    <geom name="box2" type="box"  pos="1 1 0.4" size="0.4 0.4 0.4" rgba="1 0 0 1"/>
+
+  </worldbody>
+</mujoco>

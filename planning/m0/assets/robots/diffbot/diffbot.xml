@@ -1,0 +1,60 @@
+<mujoco model="diffbot">
+<include file="scene.xml"/>
+
+  <worldbody>
+
+
+    <body name="pusher1" pos="0 0 0">
+    
+      <freejoint/>
+
+      <!-- robot base -->
+      <geom name="base"
+            type="cylinder"
+            pos="0 0 0.1"
+            size="0.18 0.07"           
+            rgba="1.0 0.6 0.2 1"/>
+
+      <!-- left wheel-->
+      <body name="left_wheel" pos="-0.03 0.2 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="left_hinge" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="left_geom" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1"/>
+      </body>
+
+      <!-- right wheel -->
+      <body name="right_wheel" pos="-0.03 -0.2 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="right_hinge" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="right_geom" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1"/>
+      </body>
+
+      <geom name="front wheel" pos="0.1 0 0.02" type="sphere" size=".02" condim="1" priority="1"/>
+
+
+    </body>
+
+
+  
+  </worldbody>
+
+  <tendon>
+  <fixed name="forward">
+    <joint joint="left_hinge" coef=".5"/>
+    <joint joint="right_hinge" coef=".5"/>
+  </fixed>
+  <fixed name="turn">
+    <joint joint="left_hinge" coef="-.5"/>
+    <joint joint="right_hinge" coef=".5"/>
+  </fixed>
+</tendon>
+
+<actuator>
+  <motor name="forward" tendon="forward" ctrlrange="-1. 1."/>
+  <motor name="turn" tendon="turn" ctrlrange="-1. 1."/>
+</actuator>
+
+<sensor>
+    <jointactuatorfrc name="right" joint="right_hinge"/>
+    <jointactuatorfrc name="left" joint="left_hinge"/>
+  </sensor>
+
+</mujoco>

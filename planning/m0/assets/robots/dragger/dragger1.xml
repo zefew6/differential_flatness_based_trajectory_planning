@@ -1,0 +1,115 @@
+<!-- dragger1 use soft tube to connect with two differiential robots -->
+
+
+<mujoco model="dragger1">
+  <compiler angle="degree" coordinate="local"/>
+
+  <asset>
+    <texture name="texcyl" type="2d" builtin="checker" rgb1=".3 .3 .3" rgb2=".15 0.15 0.15"
+      width="512" height="512" mark="cross" markrgb=".22 .22 .22"/>
+    <material name="matcyl" reflectance="0.3" texture="texcyl" texrepeat="3 3" texuniform="true"/>
+  </asset>
+
+  <worldbody>
+    <light name="sun" pos="2 -2 3" dir="-1 1 -1"/>
+    <geom name="floor" type="plane" size="10 10 .1" rgba="0.9 0.9 0.9 1"/>
+
+
+    <body name="robot" pos="0 0 1">
+      <freejoint name="root_free"/>
+
+      <!-- base -->
+      <geom name="base"
+            type="cylinder"
+            pos="0 0 0.10"
+            size="0.18 0.04"           
+            rgba="1.0 0.6 0.2 1"/>
+
+      <body name="left_anchor" pos="-0.15 0 0.10">
+        <site  name="left_anchor" size=".01 .01 .01"/>
+      </body>
+
+
+      <!-- left wheel-->
+      <body name="left_wheel" pos="0 0.2 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="left_hinge" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="left_geom" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1" friction=".1"/>
+      </body>
+
+      <!-- right wheel -->
+      <body name="right_wheel" pos="0 -0.2 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="right_hinge" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="right_geom" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1" friction=".1"/>
+      </body>
+
+      <geom name="caster" type="sphere" pos="0.10 0 0.04" size="0.04" rgba="0.2 0.2 0.2 1"/>
+      <geom name="caster1" type="sphere" pos="-0.10 0 0.04" size="0.04" rgba="0.2 0.2 0.2 1"/>
+
+
+      <!-- base -->
+      <geom name="base22"
+            type="cylinder"
+            pos="0 -1.6 0.10"
+            size="0.18 0.04"           
+            rgba="1.0 0.6 0.2 1"
+            density="1000"/>
+
+      <body name="right_anchor" pos="-0.15 -1.6 0.10">
+        <site  name="right_anchor" size=".01 .01 .01"/>
+      </body>
+
+      <!-- left wheel-->
+      <body name="left_wheel22" pos="0 -1.4 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="left_hinge22" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="left_geom22" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1" friction="5" density="1000"/>
+      </body>
+
+      <!-- right wheel -->
+      <body name="right_wheel22" pos="0 -1.8 0.06" quat="0.707388 -0.706825 0 0">
+        <joint name="right_hinge22" type="hinge" axis="0 0 1" damping="0.02"/>
+        <geom  name="right_geom22" type="cylinder" size="0.06 0.02" rgba="0.1 0.6 0.9 1" friction="5" density="1000"/>
+      </body>
+
+      <geom name="caster22" type="sphere" pos="0.10 -1.6 0.04" size="0.04" rgba="0.2 0.2 0.2 1"/>
+      <geom name="caster23" type="sphere" pos="-0.10 -1.6 0.04" size="0.04" rgba="0.2 0.2 0.2 1"/>    
+
+
+      <body name="cylinder_holder" pos="0 -1.6 0.11">
+
+          <body name="connector" pos="0. 0. 0.18">
+          <joint name="rotate_free1" type="hinge" axis="0 0 1"/>
+          <geom  name="connector1" type="box" size="0.04 0.04 0.1" rgba="0.1 0.6 0.9 1"/>
+          </body>
+      </body>
+
+  <flexcomp name="cable" type="grid" count="80 1 1" spacing=".02 1 1" dim="1"
+            radius="0.01" pos="-0.2 -0.9 0.2" rgba="1 0 0 1" mass="0.005" quat="0.707 0 0 0.707">
+        <edge equality="true"/>
+        <!-- <pin id="79"/>
+        <pin id="0"/> -->
+
+  </flexcomp>
+
+
+
+    </body>
+
+  </worldbody>
+
+
+  <equality>
+    <weld name="right_boundary" body1="cable_79" body2="right_anchor" relpose="0 0 0 1 0 0 0"/>
+    <weld name="left_boundary" body1="cable_0" body2="left_anchor" relpose="0 0 0 1 0 0 0"/>
+
+  </equality>
+
+
+
+  <actuator>
+      <velocity name="wheel_left_actuator" ctrllimited="true" ctrlrange="-3.0 3.0" gear="1" kv="1.0" joint="left_hinge" />
+      <velocity name="wheel_right_actuator" ctrllimited="true" ctrlrange="-1.0 1.0" gear="1" kv="1.0" joint="right_hinge" />
+      <velocity name="wheel_left_actuator22" ctrllimited="true" ctrlrange="-1.0 1.0" gear="1" kv="1.0" joint="left_hinge22" />
+      <velocity name="wheel_right_actuator22" ctrllimited="true" ctrlrange="-1.0 1.0" gear="1" kv="1.0" joint="right_hinge22" />
+  </actuator>
+
+</mujoco>
