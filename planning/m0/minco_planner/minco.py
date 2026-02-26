@@ -202,6 +202,102 @@ class MINCO:
             energy += 4800.0 * np.dot(c5, c5) * self.T3[i]
         
         return energy
+
+    def plot_trajectory(
+        self,
+        *,
+        dt: float = 0.01,
+        show_waypoints: bool = True,
+        show_velocity: bool = True,
+        show_acceleration: bool = True,
+        title: str | None = None,
+    ):
+        """Plot trajectory position/velocity/acceleration in a single figure.
+
+        Notes:
+        - This method is used by `minco_test.py` for interactive visualization.
+        - Returns (fig, axes) where axes is a 2x2 ndarray.
+        """
+        t_total = float(np.sum(self.T))
+        if t_total <= 0:
+            raise ValueError("Trajectory total time must be positive.")
+
+        ts = np.arange(0.0, t_total + 1e-12, float(dt))
+        ps = np.zeros((len(ts), 2), dtype=float)
+        vs = np.zeros((len(ts), 2), dtype=float)
+        accs = np.zeros((len(ts), 2), dtype=float)
+
+        for k, t in enumerate(ts):
+            p, v, a = self.eval(float(t))
+            ps[k] = p
+            vs[k] = v
+            accs[k] = a
+
+        fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+        ax_xy = axes[0, 0]
+        ax_v = axes[0, 1]
+        ax_a = axes[1, 0]
+        ax_speed = axes[1, 1]
+
+        # XY path
+        ax_xy.plot(ps[:, 0], ps[:, 1], "b-", linewidth=2.0, label="Trajectory")
+        ax_xy.plot(ps[0, 0], ps[0, 1], "go", label="Start")
+        ax_xy.plot(ps[-1, 0], ps[-1, 1], "ro", label="Goal")
+        if show_waypoints and getattr(self, "waypoints", None) is not None and len(self.waypoints) > 0:
+            wpts = np.asarray(self.waypoints)
+            ax_xy.plot(
+                wpts[:, 0],
+                wpts[:, 1],
+                linestyle="none",
+                marker="o",
+                markersize=6,
+                color="purple",
+                label="Waypoints",
+            )
+        ax_xy.set_title("XY Path")
+        ax_xy.set_xlabel("X")
+        ax_xy.set_ylabel("Y")
+        ax_xy.axis("equal")
+        ax_xy.grid(True, alpha=0.3)
+        ax_xy.legend(loc="best")
+
+        # Velocity
+        if show_velocity:
+            ax_v.plot(ts, vs[:, 0], label="vx")
+            ax_v.plot(ts, vs[:, 1], label="vy")
+            ax_v.set_title("Velocity")
+            ax_v.set_xlabel("t")
+            ax_v.set_ylabel("v")
+            ax_v.grid(True, alpha=0.3)
+            ax_v.legend(loc="best")
+        else:
+            ax_v.axis("off")
+
+        # Acceleration
+        if show_acceleration:
+            ax_a.plot(ts, accs[:, 0], label="ax")
+            ax_a.plot(ts, accs[:, 1], label="ay")
+            ax_a.set_title("Acceleration")
+            ax_a.set_xlabel("t")
+            ax_a.set_ylabel("a")
+            ax_a.grid(True, alpha=0.3)
+            ax_a.legend(loc="best")
+        else:
+            ax_a.axis("off")
+
+        # Speed magnitude
+        speed = np.linalg.norm(vs, axis=1)
+        ax_speed.plot(ts, speed, "m-", label="|v|")
+        ax_speed.set_title("Speed")
+        ax_speed.set_xlabel("t")
+        ax_speed.set_ylabel("|v|")
+        ax_speed.grid(True, alpha=0.3)
+        ax_speed.legend(loc="best")
+
+        if title:
+            fig.suptitle(str(title))
+        fig.tight_layout()
+        return fig, axes
     
     def get_traj(self, dt=0.01, z_height=0.03):
         """
@@ -244,52 +340,11 @@ class MINCO:
         
         return trajectory
     
-    def plot_trajectory(self, dt=0.01, show_waypoints=True, show_velocity=False, show_acceleration=False):
-        """
-        绘制生成的轨迹
-        
-        参数:
-            dt: 采样时间间隔 (秒)
-            show_waypoints: 是否显示航点
-            show_velocity: 是否显示速度曲线
-            show_acceleration: 是否显示加速度曲线
-        """
-        # 生成轨迹
-        traj = self.get_traj(dt=dt)
-        time_samples = traj['time']
-        positions = traj['position']
-        velocities = traj['velocity']
-        accelerations = traj['acceleration']
-        
-        # 创建子图
-        n_plots = 1 + int(show_velocity) + int(show_acceleration)
-        fig, axes = plt.subplots(1, n_plots, figsize=(6*n_plots, 5))
-        if n_plots == 1:
-            axes = [axes]
-        
-        # 1. 绘制轨迹路径 (x-y平面)
-        ax_idx = 0
-        axes[ax_idx].plot(positions[:, 0], positions[:, 1], 'b-', linewidth=2, label='Trajectory')
-        axes[ax_idx].plot(self.head_pva[0, 0], self.head_pva[0, 1], 'go', markersize=10, label='Start')
-        axes[ax_idx].plot(self.tail_pva[0, 0], self.tail_pva[0, 1], 'ro', markersize=10, label='Goal')
-        
-        # 显示航点
-        if show_waypoints and len(self.waypoints) > 0:
-            waypoints_array = np.array(self.waypoints)
-            if waypoints_array.ndim == 1:
-                waypoints_array = waypoints_array.reshape(1, -1)
-            axes[ax_idx].plot(waypoints_array[:, 0], waypoints_array[:, 1], 
-                             'mo', markersize=8, label='Waypoints')
-        
-        axes[ax_idx].set_xlabel('X (m)', fontsize=12)
-        axes[ax_idx].set_ylabel('Y (m)', fontsize=12)
-        axes[ax_idx].set_title('Trajectory Path', fontsize=14)
-        axes[ax_idx].legend()
-        axes[ax_idx].grid(True, alpha=0.3)
-        axes[ax_idx].axis('equal')
-        ax_idx += 1
-        
-        # 2. 绘制速度曲线
+    # NOTE:
+    # This class previously had a second `plot_trajectory` implementation below which
+    # *overrode* the newer 2x2 kinematics version above and returned None.
+    # That broke callers (e.g. `minco_test.py`) that expect `(fig, axes)`.
+    # The duplicate implementation has been removed to keep a single, consistent API.
         if show_velocity:
             axes[ax_idx].plot(time_samples, velocities[:, 0], 'r-', label='Vx')
             axes[ax_idx].plot(time_samples, velocities[:, 1], 'b-', label='Vy')

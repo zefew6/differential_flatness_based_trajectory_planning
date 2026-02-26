@@ -146,6 +146,127 @@ class GridMap2D:
     # 占据操作
     # -----------------------
 
+    def get_xy_meshgrid(self):
+        """Return X,Y meshgrid of cell-center coordinates.
+
+        Returns
+        -------
+        X, Y : ndarray
+            Shape (nx, ny). X[ix,iy], Y[ix,iy] are the world coordinates (meters)
+            of the center of the corresponding cell.
+        """
+        xs = (np.arange(self.nx, dtype=np.float64) + 0.5) * self.resolution + float(self.map_origin[0])
+        ys = (np.arange(self.ny, dtype=np.float64) + 0.5) * self.resolution + float(self.map_origin[1])
+        X, Y = np.meshgrid(xs, ys, indexing="ij")
+        return X, Y
+
+    def add_circle_obstacle(
+        self,
+        center_xy: np.ndarray,
+        radius: float,
+        *,
+        value: int = 1,
+        update_esdf: bool = True,
+    ) -> None:
+        """Rasterize a circular obstacle into occupancy grid.
+
+        Parameters
+        ----------
+        center_xy: (2,) array-like
+            Circle center in world/map frame.
+        radius: float
+            Circle radius in meters.
+        value: int
+            Occupancy value to write. 1 means occupied; 0 can be used to carve free space.
+        update_esdf: bool
+            If True, recompute ESDF after modification.
+        """
+        center_xy = np.asarray(center_xy, dtype=np.float64).reshape(2)
+        radius = float(radius)
+        if radius <= 0:
+            raise ValueError("radius must be positive")
+
+        X, Y = self.get_xy_meshgrid()
+        mask = (X - center_xy[0]) ** 2 + (Y - center_xy[1]) ** 2 <= radius ** 2
+        self.occ[mask] = 1 if int(value) != 0 else 0
+        self._esdf_valid = False
+        if update_esdf:
+            self.update_esdf()
+
+    def add_rectangle_obstacle(
+        self,
+        xmin: float,
+        xmax: float,
+        ymin: float,
+        ymax: float,
+        *,
+        value: int = 1,
+        update_esdf: bool = True,
+    ) -> None:
+        """Axis-aligned rectangle obstacle rasterization (AABB)."""
+        xmin = float(xmin)
+        xmax = float(xmax)
+        ymin = float(ymin)
+        ymax = float(ymax)
+        if xmax < xmin:
+            xmin, xmax = xmax, xmin
+        if ymax < ymin:
+            ymin, ymax = ymax, ymin
+
+        X, Y = self.get_xy_meshgrid()
+        mask = (X >= xmin) & (X <= xmax) & (Y >= ymin) & (Y <= ymax)
+        self.occ[mask] = 1 if int(value) != 0 else 0
+        self._esdf_valid = False
+        if update_esdf:
+            self.update_esdf()
+
+    @staticmethod
+    def _points_in_polygon(points_xy: np.ndarray, verts_xy: np.ndarray) -> np.ndarray:
+        """Vectorized even-odd rule test.
+
+        points_xy: (N,2)
+        verts_xy: (M,2) polygon vertices (closed or open)
+        returns mask: (N,) bool
+        """
+        pts = np.asarray(points_xy, dtype=np.float64)
+        verts = np.asarray(verts_xy, dtype=np.float64)
+        if verts.ndim != 2 or verts.shape[1] != 2 or verts.shape[0] < 3:
+            raise ValueError("verts must be (M,2) with M>=3")
+
+        x = pts[:, 0]
+        y = pts[:, 1]
+        xv = verts[:, 0]
+        yv = verts[:, 1]
+
+        inside = np.zeros(len(pts), dtype=bool)
+        j = len(verts) - 1
+        for i in range(len(verts)):
+            xi, yi = xv[i], yv[i]
+            xj, yj = xv[j], yv[j]
+            # edge intersects horizontal ray?
+            intersect = ((yi > y) != (yj > y)) & (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)
+            inside ^= intersect
+            j = i
+        return inside
+
+    def add_polygon_obstacle(
+        self,
+        verts_xy: np.ndarray,
+        *,
+        value: int = 1,
+        update_esdf: bool = True,
+    ) -> None:
+        """Rasterize a polygon obstacle (triangle is a 3-vertex polygon)."""
+        verts_xy = np.asarray(verts_xy, dtype=np.float64)
+        X, Y = self.get_xy_meshgrid()
+        pts = np.stack([X.reshape(-1), Y.reshape(-1)], axis=1)
+        mask_flat = self._points_in_polygon(pts, verts_xy)
+        mask = mask_flat.reshape(self.nx, self.ny)
+        self.occ[mask] = 1 if int(value) != 0 else 0
+        self._esdf_valid = False
+        if update_esdf:
+            self.update_esdf()
+
     def set_occupancy(self, occ: np.ndarray, *, update_esdf: bool = True) -> None:
         """直接设置占据栅格。
 

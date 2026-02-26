@@ -21,7 +21,9 @@ class PolyTrajOptimizer:
         # 优化参数 - 平衡收敛性和约束满足
         self.wei_time = 1.0        # 时间权重（低→允许时间延长）
         self.wei_feas = 5.0      # 可行性权重（适中，避免梯度爆炸）
-        self.wei_obs = 1000.0      # 静态障碍物权重
+        # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
+        # 之前 1e3 往往会被 time/jerk 项“淹没”，导致轨迹仍穿入安全圈
+        self.wei_obs = 100000.0
         self.wei_surround = 5000.0 # 动态障碍物权重
         
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
@@ -53,6 +55,10 @@ class PolyTrajOptimizer:
         self.variable_num = 0
         self.iter_num = 0
 
+        # debug / diagnostics
+        self.debug_print_every = 10  # print cost breakdown every N iterations (0 disables)
+        self._last_cost_breakdown = None
+
         # --- obstacle related ---
         # 外部注入的地图对象（推荐 gridmap_2d_v2.GridMap2D），需要提供 get_distance_and_gradient(pos)
         self.grid_map = None
@@ -68,7 +74,8 @@ class PolyTrajOptimizer:
         self.grid_map = grid_map
         
     def setParam(self, wei_time=None, wei_feas=None, mini_T=None, 
-                 lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None):
+                 lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None,
+                 wei_obs=None, obs_safe_threshold=None):
         """
         设置优化参数
         
@@ -92,6 +99,24 @@ class PolyTrajOptimizer:
             self.lbfgs_delta = lbfgs_delta
         if lbfgs_max_iterations is not None:
             self.lbfgs_max_iterations = lbfgs_max_iterations
+
+        if wei_obs is not None:
+            self.wei_obs = float(wei_obs)
+            # propagate to already-created containers
+            for obsConstr in getattr(self, 'obsConstr_container', []):
+                obsConstr.wei_obs = float(wei_obs)
+
+        if obs_safe_threshold is not None:
+            # propagate to already-created containers
+            for obsConstr in getattr(self, 'obsConstr_container', []):
+                obsConstr.safe_threshold = float(obs_safe_threshold)
+
+    def setDebugPrintEvery(self, n: int):
+        """Set how often to print per-iteration cost diagnostics.
+
+        n <= 0 disables printing.
+        """
+        self.debug_print_every = int(n)
     
     def OptimizeTrajectory(self, iniStates, finStates, initInnerPts, initTs):
         """优化轨迹
@@ -236,6 +261,10 @@ class PolyTrajOptimizer:
         total_smcost = 0.0
         total_timecost = 0.0
         total_penalty = 0.0  # 约束惩罚代价
+
+        # breakdown
+        total_feas_cost = 0.0
+        total_obs_cost = 0.0
         
         # 解析优化变量
         offset = 0
@@ -273,7 +302,7 @@ class PolyTrajOptimizer:
             gradT_container.append(gradt_seg)
             offset += piece_num
         
-        # 计算每条轨迹的代价
+    # 计算每条轨迹的代价
         for trajid in range(self.trajnum):
             piece_num = self.piece_num_container[trajid]
             T_seg = T_container[trajid]
@@ -311,6 +340,7 @@ class PolyTrajOptimizer:
                 self.wei_feas
             )
             total_penalty += feas_cost
+            total_feas_cost += feas_cost
             
             # ⚠️ 重要：在 calGrads_PT() 之前累加约束梯度到 gdC
             # 因为 calGrads_PT() 会用 gdC 计算 gdP (通过伴随方法)
@@ -327,6 +357,7 @@ class PolyTrajOptimizer:
                     self.grid_map,
                 )
                 total_penalty += obs_cost
+                total_obs_cost += obs_cost
 
                 # 累加到 gdC/gdT，等待 calGrads_PT() 统一回传到 P/T
                 self.jerkOpt_container[trajid].gdC += obsConstr.get_gdC()
@@ -384,9 +415,68 @@ class PolyTrajOptimizer:
             grad = grad * (max_grad_norm / grad_norm)
         
         # 总代价 = 平滑代价 + 时间代价 + 惩罚代价
-        total_cost = float(total_smcost + total_timecost + total_penalty)
-        
+        # 注意：total_timecost 可能是 numpy array（由 VirtualTGradCost 返回），这里统一转 float
+        total_smcost_f = float(total_smcost)
+        total_timecost_f = float(np.sum(total_timecost))
+        total_penalty_f = float(total_penalty)
+        total_feas_cost_f = float(total_feas_cost)
+        total_obs_cost_f = float(total_obs_cost)
+        total_cost = float(total_smcost_f + total_timecost_f + total_penalty_f)
+
+        # cache breakdown for external inspection (e.g., after optimize)
+        self._last_cost_breakdown = {
+            'iter': int(self.iter_num),
+            'smooth': total_smcost_f,
+            'time': total_timecost_f,
+            'penalty': total_penalty_f,
+            'feas': total_feas_cost_f,
+            'obs': total_obs_cost_f,
+            'total': float(total_cost),
+            'grad_norm_raw': float(grad_norm_scalar),
+        }
+
+        # optional per-iteration print
         self.iter_num += 1
+        if self.debug_print_every > 0 and (self.iter_num % self.debug_print_every == 0 or self.iter_num == 1):
+            msg = (
+                f"[MINCO opt] iter={self.iter_num:4d} "
+                f"total={total_cost:.6e} "
+                f"smooth={total_smcost_f:.3e} time={total_timecost_f:.3e} "
+                f"penalty={total_penalty_f:.3e} (feas={total_feas_cost_f:.3e}, obs={total_obs_cost_f:.3e}) "
+                f"|grad|={grad_norm_scalar:.3e}"
+            )
+
+            # try to report minimum SDF distance along current trajectory (diagnostic only)
+            if self.grid_map is not None:
+                try:
+                    min_d = np.inf
+                    for trajid in range(self.trajnum):
+                        piece_num = self.piece_num_container[trajid]
+                        coeffs = self.jerkOpt_container[trajid].coeffs
+                        T_seg = self.jerkOpt_container[trajid].T
+                        for i in range(piece_num):
+                            K = self.destraj_resolution if (i == 0 or i == piece_num - 1) else self.traj_resolution
+                            c = coeffs[6 * i : 6 * (i + 1), :]
+                            T_i = float(T_seg[i])
+                            step = T_i / K
+                            for j in range(K + 1):
+                                s1 = step * j
+                                s2 = s1 * s1
+                                s3 = s2 * s1
+                                s4 = s2 * s2
+                                s5 = s4 * s1
+                                beta0 = np.array([1.0, s1, s2, s3, s4, s5])
+                                pos = c.T @ beta0
+                                d = float(self.grid_map.get_distance(pos))
+                                if d < min_d:
+                                    min_d = d
+                    if np.isfinite(min_d):
+                        msg += f" min_sdf={min_d:.3f}"
+                except Exception:
+                    pass
+
+            print(msg)
+
         return total_cost, grad
     
     def RealT2VirtualT(self, RT, VT):
