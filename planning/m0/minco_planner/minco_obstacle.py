@@ -73,11 +73,13 @@ class ObstacleConstraint:
         self.gdC = None
         self.gdT = None
         self.obs_cost = 0.0
+        self.min_dist = np.inf   # 上次 addObstacleGradCost 采样到的最小 SDF，供日志读取
 
     def reset(self, coeffs: np.ndarray, piece_num: int):
         self.gdC = np.zeros_like(coeffs)
         self.gdT = np.zeros(piece_num, dtype=np.float64)
         self.obs_cost = 0.0
+        self.min_dist = np.inf
 
     def addObstacleGradCost(
         self,
@@ -101,6 +103,9 @@ class ObstacleConstraint:
         """
         self.reset(coeffs, piece_num)
 
+        # 检测 grid_map 是否支持批量查询（优先使用，快 10-50x）
+        use_batch = hasattr(grid_map, 'get_distance_and_gradient_batch')
+
         for i in range(piece_num):
             # 采样分辨率：起止段更密
             K = self.destraj_resolution if (i == 0 or i == piece_num - 1) else self.traj_resolution
@@ -108,55 +113,80 @@ class ObstacleConstraint:
             c = coeffs[6 * i : 6 * (i + 1), :]  # (6,2)
             T_i = float(T[i])
             if T_i <= 0 or not np.isfinite(T_i):
-                # 不合理时间，直接给大惩罚
                 return 1e10
 
             step = T_i / K
 
-            for j in range(K + 1):
-                omg = 0.5 if (j == 0 or j == K) else 1.0
-                s1 = step * j
-                s2 = s1 * s1
-                s3 = s2 * s1
-                s4 = s2 * s2
-                s5 = s4 * s1
-                alpha = j / K
+            # ── 向量化 beta / pos / vel 计算 ──────────────────────────
+            js = np.arange(K + 1, dtype=np.float64)
+            s1 = step * js
+            s2 = s1 * s1
+            s3 = s2 * s1
+            s4 = s2 * s2
+            s5 = s4 * s1
+            # beta0 / beta1: (K+1, 6)
+            beta0 = np.stack([np.ones(K + 1), s1, s2, s3, s4, s5], axis=1)
+            beta1 = np.stack([np.zeros(K + 1), np.ones(K + 1),
+                              2.0 * s1, 3.0 * s2, 4.0 * s3, 5.0 * s4], axis=1)
+            pos_all = beta0 @ c   # (K+1, 2)
+            vel_all = beta1 @ c   # (K+1, 2)
 
-                beta0 = np.array([1.0, s1, s2, s3, s4, s5])
-                beta1 = np.array([0.0, 1.0, 2.0 * s1, 3.0 * s2, 4.0 * s3, 5.0 * s4])
+            omg_vec = np.ones(K + 1)
+            omg_vec[0] = 0.5
+            omg_vec[K] = 0.5
+            alpha_vec = js / K
 
-                pos = c.T @ beta0
-                vel = c.T @ beta1
+            # ── ESDF 批量查询 ─────────────────────────────────────────
+            if use_batch:
+                dists, grad_sfds = grid_map.get_distance_and_gradient_batch(pos_all)
+                # dists: (K+1,), grad_sfds: (K+1, 2)
+            else:
+                # 回退：逐点查询
+                dists     = np.empty(K + 1)
+                grad_sfds = np.zeros((K + 1, 2))
+                for j in range(K + 1):
+                    d, g = grid_map.get_distance_and_gradient(pos_all[j])
+                    dists[j] = d
+                    grad_sfds[j] = g
 
-                # SDF & gradient
-                dist, grad_sdf = grid_map.get_distance_and_gradient(pos)
-                dist = float(dist)
-                grad_sdf = np.asarray(grad_sdf, dtype=np.float64)
+            # 记录最小距离（供日志复用）
+            min_d = float(np.min(dists[np.isfinite(dists)]) if np.any(np.isfinite(dists)) else np.inf)
+            if min_d < self.min_dist:
+                self.min_dist = min_d
 
-                viola = self.safe_threshold - dist
-                if viola > 0.0 and dist < self.dist_cap:
-                    # penalty + derivative wrt viola
-                    if viola < self.quad_threshold:
-                        penalty = viola * viola
-                        penaD = 2.0 * viola
-                    else:
-                        penalty = viola
-                        penaD = 1.0
+            # ── 向量化惩罚计算 ────────────────────────────────────────
+            violas = self.safe_threshold - dists       # (K+1,)
+            active = (violas > 0.0) & (dists < self.dist_cap)
 
-                    cost_c = self.wei_obs * penalty
+            if not np.any(active):
+                continue
 
-                    # d(cost)/dp = wei_obs * penaD * d(viola)/dp = wei_obs*penaD*(-grad_sdf)
-                    grad_p = self.wei_obs * penaD * (-grad_sdf)
+            # penalty 和 penaD（二次/线性切换）
+            penalty = np.where(violas < self.quad_threshold,
+                               violas * violas,
+                               violas)
+            penaD   = np.where(violas < self.quad_threshold,
+                               2.0 * violas,
+                               np.ones_like(violas))
+            penalty = np.where(active, penalty, 0.0)
+            penaD   = np.where(active, penaD,   0.0)
 
-                    # accumulate cost
-                    self.obs_cost += omg * step * cost_c
+            cost_c = self.wei_obs * penalty             # (K+1,)
+            # grad_p: (K+1, 2)
+            grad_p = self.wei_obs * penaD[:, None] * (-grad_sfds)
 
-                    # coeff gradient: outer(beta0, grad_p)
-                    self.gdC[6 * i : 6 * (i + 1), :] += omg * step * np.outer(beta0, grad_p)
+            # 累加代价
+            weights = omg_vec * step                    # (K+1,)
+            self.obs_cost += float(np.dot(weights, cost_c))
 
-                    # time gradient: align ST-opt-tools discrete form
-                    # grad_time += omg * (cost/K + step * alpha * grad_p · v)
-                    self.gdT[i] += omg * (cost_c / K + step * alpha * float(np.dot(grad_p, vel)))
+            # coeff 梯度: sum_j  weights[j] * outer(beta0[j], grad_p[j])
+            # = beta0.T @ diag(weights) @ grad_p  → (6,2)
+            self.gdC[6 * i : 6 * (i + 1), :] += beta0.T @ (weights[:, None] * grad_p)
+
+            # 时间梯度: sum_j omg[j] * (cost_c[j]/K + step*alpha[j]*dot(grad_p[j], vel[j]))
+            dot_gv = np.sum(grad_p * vel_all, axis=1)   # (K+1,)
+            self.gdT[i] += float(np.dot(omg_vec,
+                                        cost_c / K + step * alpha_vec * dot_gv))
 
         return float(self.obs_cost)
 

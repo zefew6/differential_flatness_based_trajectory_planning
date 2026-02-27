@@ -27,20 +27,14 @@ try:
 except Exception as e:
     raise RuntimeError("Please activate the MINCO virtualenv where 'mujoco' is installed") from e
 
-# Ensure repository packages/modules can be imported when running from repository root
+# Ensure the `planning` package root is on sys.path so that `m0` is importable.
+# This is the only path manipulation needed – works on any machine without modification.
 _this_file = os.path.abspath(__file__)
-# planning_root is the `planning` folder containing `m0`
 planning_root = os.path.dirname(os.path.dirname(_this_file))
 if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
-# Allow bare imports used inside m0/minco_planner (minco, minco_Optimizer, ...)
-minco_planner_dir = os.path.join(planning_root, "m0", "minco_planner")
-if minco_planner_dir not in sys.path:
-    sys.path.insert(0, minco_planner_dir)
-
-from minco import MINCO
-from minco_Optimizer import PolyTrajOptimizer
+from m0.minco_planner import MINCO, PolyTrajOptimizer
 
 # Import A* and GridMap2D (继承自 GridMap，同时支持 A* 和 MINCO 优化器)
 from m0.planning.a_star import graph_search
@@ -108,7 +102,7 @@ def main():
     durations = optimizer.allocateTime(full_pts)  # shape (piece_num,)
 
     initTs = np.array([np.sum(durations)])
-
+    t_start = time.time()
     print("Starting MINCO optimization (A* initial path -> MINCO)...")
     success, final_cost = optimizer.OptimizeTrajectory(
         iniStates=[head_pva],
@@ -117,7 +111,7 @@ def main():
         initTs=initTs,
         initSegTs=[durations],   # 按段时间，替代等分逻辑
     )
-
+    print(f"Optimization took {time.time() - t_start:.3f}s")
     if not success:
         print("Optimizer reported failure or did not fully converge, but will still try to visualize result.")
 

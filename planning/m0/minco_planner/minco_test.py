@@ -10,8 +10,9 @@ _m0_dir = os.path.dirname(_this_dir)
 if _m0_dir not in sys.path:
     sys.path.insert(0, _m0_dir)
 
-from minco import MINCO
-from minco_Optimizer import PolyTrajOptimizer
+from m0.minco_planner import MINCO, PolyTrajOptimizer
+# from minco import MINCO
+# from minco_Optimizer import PolyTrajOptimizer
 from utils.gridmap_2d_v2 import GridMap2D, GridMap2DParams
 from map_obstacles import CIRCULAR_OBSTACLES, OBSTACLES
 

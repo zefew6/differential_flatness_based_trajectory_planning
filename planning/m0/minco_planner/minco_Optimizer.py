@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.optimize import minimize
-from minco_MinJerkOpt import MinJerkOpt
-from minco_FeasibilityConstraint import FeasibilityConstraint
-from minco_obstacle import ObstacleConstraint
+from .minco_MinJerkOpt import MinJerkOpt
+from .minco_FeasibilityConstraint import FeasibilityConstraint
+from .minco_obstacle import ObstacleConstraint
 class PolyTrajOptimizer:
     """
     多项式轨迹优化器
@@ -22,10 +22,12 @@ class PolyTrajOptimizer:
         self.wei_time = 10.0        # 时间权重（低→允许时间延长）
         self.wei_feas = 500.0      # 可行性权重（适中，避免梯度爆炸）
         # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
-        # 之前 1e3 往往会被 time/jerk 项"淹没"，导致轨迹仍穿入安全圈
-        self.wei_obs = 1000.0
+        self.wei_obs = 1e4
         self.wei_surround = 5000.0 # 动态障碍物权重
-        self.obs_safe_threshold = 0.01  # 障碍安全距离（米），与 A* inflation_radius 对齐
+        # 障碍安全距离（米）：ESDF 小于此值的点会被惩罚。
+        # 需要大于地图中自由点的最小 ESDF（典型值 0.02~0.05m），
+        # 通常设为 robot_radius（不含 margin）以在膨胀边界内再留一圈安全余量。
+        self.obs_safe_threshold = 0.05
         
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
         
@@ -430,6 +432,7 @@ class PolyTrajOptimizer:
         # print(f"Final cost: {final_cost:.6f}")
         # print(f"Final gradient norm: {np.linalg.norm(result.jac):.6e}")
         # print(f"Iterations: {self.iter_num}")
+        print(f"[MINCO] nit={result.nit}  nfev={result.nfev}  callback_calls={self.iter_num}  msg={result.message}")
         
         return success, final_cost
     
@@ -633,29 +636,11 @@ class PolyTrajOptimizer:
             )
 
             # try to report minimum SDF distance along current trajectory (diagnostic only)
-            if self.grid_map is not None:
+            # 直接读 ObstacleConstraint 在本轮 addObstacleGradCost 中顺手记录的 min_dist，
+            # 避免对轨迹再做一次完整重采样（之前是 200+ 次额外 ESDF 查询）。
+            if self.grid_map is not None and len(self.obsConstr_container) > 0:
                 try:
-                    min_d = np.inf
-                    for trajid in range(self.trajnum):
-                        piece_num = self.piece_num_container[trajid]
-                        coeffs = self.jerkOpt_container[trajid].coeffs
-                        T_seg = self.jerkOpt_container[trajid].T
-                        for i in range(piece_num):
-                            K = self.destraj_resolution if (i == 0 or i == piece_num - 1) else self.traj_resolution
-                            c = coeffs[6 * i : 6 * (i + 1), :]
-                            T_i = float(T_seg[i])
-                            step = T_i / K
-                            for j in range(K + 1):
-                                s1 = step * j
-                                s2 = s1 * s1
-                                s3 = s2 * s1
-                                s4 = s2 * s2
-                                s5 = s4 * s1
-                                beta0 = np.array([1.0, s1, s2, s3, s4, s5])
-                                pos = c.T @ beta0
-                                d = float(self.grid_map.get_distance(pos))
-                                if d < min_d:
-                                    min_d = d
+                    min_d = min(oc.min_dist for oc in self.obsConstr_container)
                     if np.isfinite(min_d):
                         msg += f" min_sdf={min_d:.3f}"
                 except Exception:
