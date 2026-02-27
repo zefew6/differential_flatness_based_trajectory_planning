@@ -12,7 +12,7 @@
             "qpdunes": "",
             "qpoases": "-lqpOASES_e"
         },
-        "code_export_directory": "/home/hac/Differential_Flatness/MAS/m0/c_generated_code",
+        "code_export_directory": "/home/hac/Differential_Flatness/MAS/planning/c_generated_code",
         "cython_include_dirs": [
             "/home/hac/Differential_Flatness/MAS/MINCO/lib/python3.10/site-packages/numpy/_core/include",
             "/usr/include/python3.10"

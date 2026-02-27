@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import minimize
 from .minco_MinJerkOpt import MinJerkOpt
 from .minco_FeasibilityConstraint import FeasibilityConstraint
-from .minco_obstacle import ObstacleConstraint
+from .minco_obstacle import ObstacleConstraint, SFCObstacleConstraint
 class PolyTrajOptimizer:
     """
     多项式轨迹优化器
@@ -14,10 +14,31 @@ class PolyTrajOptimizer:
         1. Smoothness Cost: 轨迹的 Jerk 平方积分
         2. Time Cost: 总时间 * wei_time
         3. Penalty Cost: 约束违反的惩罚（障碍物、动力学等）
+
+    障碍物方法（obstacle_method）
+    ----------------------------
+    - 'esdf' （默认）：基于 ESDF/SDF 距离场（GridMap2D），参考 ST-opt-tools。
+                       需调用 setGridMap(grid_map)。
+    - 'sfc'           ：基于安全飞行走廊（凸多面体半平面约束），参考 Dftpav。
+                        需调用 setSFCCorridors(hPolys_per_traj)，
+                        其中 hPolys_per_traj[i] 为第 i 条轨迹的走廊列表
+                        （list of ndarray shape (K,3)，每行 [nx,ny,b]）。
     """
     
-    def __init__(self):
-        """初始化优化器"""
+    def __init__(self, obstacle_method: str = 'esdf'):
+        """初始化优化器
+
+        参数
+        ----
+        obstacle_method : 障碍物处理方式
+            'esdf' - 基于 ESDF 距离场（需调用 setGridMap）
+            'sfc'  - 基于安全飞行走廊（需调用 setSFCCorridors）
+        """
+        # 障碍物方法选择
+        assert obstacle_method in ('esdf', 'sfc'), \
+            f"obstacle_method must be 'esdf' or 'sfc', got '{obstacle_method}'"
+        self.obstacle_method = obstacle_method
+
         # 优化参数 - 平衡收敛性和约束满足
         self.wei_time = 10.0        # 时间权重（低→允许时间延长）
         self.wei_feas = 500.0      # 可行性权重（适中，避免梯度爆炸）
@@ -65,11 +86,20 @@ class PolyTrajOptimizer:
         # --- obstacle related ---
         # 外部注入的地图对象（推荐 gridmap_2d_v2.GridMap2D），需要提供 get_distance_and_gradient(pos)
         self.grid_map = None
-        # 静态障碍物约束模块
+        # 静态障碍物约束模块（ESDF 方法）
         self.obsConstr_container = []
+        # SFC 走廊约束模块（SFC 方法）
+        self.sfcConstr_container = []
+        # 外部注入的 SFC 走廊数据（list of list of hPoly）
+        # sfc_corridors_data[i] = 第 i 条轨迹的走廊列表（list of ndarray shape (K,3)）
+        self.sfc_corridors_data = []
+        # SFC 约束权重
+        self.wei_sfc = 1e4
+        # SFC 安全裕量（距走廊边界的最小距离，通常取 0 或 robot_radius）
+        self.sfc_safe_margin = 0.0
 
     def setGridMap(self, grid_map):
-        """设置用于避障项的 SDF/ESDF 地图。
+        """设置用于避障项的 SDF/ESDF 地图（ESDF 方法）。
 
         grid_map 需要提供：
             get_distance_and_gradient(pos)->(dist, grad)
@@ -77,6 +107,23 @@ class PolyTrajOptimizer:
         以支持 preprocessPath 的可见性剪枝。
         """
         self.grid_map = grid_map
+
+    def setSFCCorridors(self, hPolys_per_traj: list):
+        """设置 SFC 走廊数据（SFC 方法）。
+
+        参数
+        ----
+        hPolys_per_traj : list，长度 = trajnum
+            hPolys_per_traj[i] 为第 i 条轨迹的走廊列表（list of np.ndarray），
+            每个元素 shape (K, 3)，每行 [nx, ny, b]，约束 n^T p <= b（外法向量朝外）。
+            长度需等于对应轨迹的 piece_num。
+
+        注意
+        ----
+        需要在调用 OptimizeTrajectory 之前调用，
+        或者在 OptimizeTrajectory 内部通过 initSFCContainers 自动注入。
+        """
+        self.sfc_corridors_data = list(hPolys_per_traj)
 
     # ------------------------------------------------------------------
     # 路径预处理：可见性剪枝  （参考 ST-opt-tools AStar::optimizePath）
@@ -250,7 +297,8 @@ class PolyTrajOptimizer:
 
     def setParam(self, wei_time=None, wei_feas=None, mini_T=None, 
                  lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None,
-                 wei_obs=None, obs_safe_threshold=None):
+                 wei_obs=None, obs_safe_threshold=None,
+                 wei_sfc=None, sfc_safe_margin=None):
         """
         设置优化参数
         
@@ -261,6 +309,10 @@ class PolyTrajOptimizer:
             lbfgs_memsize: L-BFGS 内存大小
             lbfgs_delta: L-BFGS 收敛判据
             lbfgs_max_iterations: 最大迭代次数
+            wei_obs: ESDF 方法障碍物权重
+            obs_safe_threshold: ESDF 方法安全阈值
+            wei_sfc: SFC 方法走廊约束权重
+            sfc_safe_margin: SFC 方法安全裕量（距走廊边界最小距离）
         """
         if wei_time is not None:
             self.wei_time = wei_time
@@ -286,6 +338,16 @@ class PolyTrajOptimizer:
             # propagate to already-created containers
             for obsConstr in getattr(self, 'obsConstr_container', []):
                 obsConstr.safe_threshold = float(obs_safe_threshold)
+
+        if wei_sfc is not None:
+            self.wei_sfc = float(wei_sfc)
+            for sfcConstr in getattr(self, 'sfcConstr_container', []):
+                sfcConstr.wei_sfc = float(wei_sfc)
+
+        if sfc_safe_margin is not None:
+            self.sfc_safe_margin = float(sfc_safe_margin)
+            for sfcConstr in getattr(self, 'sfcConstr_container', []):
+                sfcConstr.safe_margin = float(sfc_safe_margin)
 
     def setDebugPrintEvery(self, n: int):
         """Set how often to print per-iteration cost diagnostics.
@@ -333,7 +395,8 @@ class PolyTrajOptimizer:
         # 初始化优化器容器
         self.jerkOpt_container = []
         self.feasConstr_container = []  # 约束容器
-        self.obsConstr_container = []   # 避障约束容器
+        self.obsConstr_container = []   # 避障约束容器（ESDF 方法）
+        self.sfcConstr_container = []   # SFC 走廊约束容器（SFC 方法）
         self.piece_num_container = []
         self.variable_num = 0
         
@@ -366,6 +429,18 @@ class PolyTrajOptimizer:
                 destraj_resolution=self.destraj_resolution,
             )
             self.obsConstr_container.append(obsConstr)
+
+            # 创建 SFCObstacleConstraint（SFC 方法）
+            sfcConstr = SFCObstacleConstraint(
+                safe_margin=self.sfc_safe_margin,
+                wei_sfc=self.wei_sfc,
+                traj_resolution=self.traj_resolution,
+                destraj_resolution=self.destraj_resolution,
+            )
+            # 注入对应轨迹的走廊数据
+            if self.sfc_corridors_data and i < len(self.sfc_corridors_data):
+                sfcConstr.set_corridors(self.sfc_corridors_data[i])
+            self.sfcConstr_container.append(sfcConstr)
             
             # 变量数：航点数 (2 * (piece_num - 1))
             self.variable_num += 2 * (piece_num - 1)
@@ -536,8 +611,9 @@ class PolyTrajOptimizer:
             self.jerkOpt_container[trajid].gdC += feasConstr.get_gdC()
             self.jerkOpt_container[trajid].gdT += feasConstr.get_gdT()
 
-            # 计算避障惩罚代价（如果提供了地图）
-            if self.grid_map is not None:
+            # 计算避障惩罚代价（按 obstacle_method 选择）
+            if self.obstacle_method == 'esdf' and self.grid_map is not None:
+                # ── ESDF 方法：基于距离场 ──────────────────────────────────
                 obsConstr = self.obsConstr_container[trajid]
                 obs_cost = obsConstr.addObstacleGradCost(
                     self.jerkOpt_container[trajid].coeffs,
@@ -547,10 +623,21 @@ class PolyTrajOptimizer:
                 )
                 total_penalty += obs_cost
                 total_obs_cost += obs_cost
-
-                # 累加到 gdC/gdT，等待 calGrads_PT() 统一回传到 P/T
                 self.jerkOpt_container[trajid].gdC += obsConstr.get_gdC()
                 self.jerkOpt_container[trajid].gdT += obsConstr.get_gdT()
+
+            elif self.obstacle_method == 'sfc' and self.sfcConstr_container:
+                # ── SFC 方法：基于凸走廊半平面 ───────────────────────────
+                sfcConstr = self.sfcConstr_container[trajid]
+                sfc_cost = sfcConstr.addObstacleGradCost(
+                    self.jerkOpt_container[trajid].coeffs,
+                    self.jerkOpt_container[trajid].T,
+                    self.piece_num_container[trajid],
+                )
+                total_penalty += sfc_cost
+                total_obs_cost += sfc_cost
+                self.jerkOpt_container[trajid].gdC += sfcConstr.get_gdC()
+                self.jerkOpt_container[trajid].gdT += sfcConstr.get_gdT()
         
         # 计算梯度
         offset_P_end = sum([2*(self.piece_num_container[i]-1) for i in range(self.trajnum)])
@@ -635,14 +722,19 @@ class PolyTrajOptimizer:
                 f"|grad|={grad_norm_scalar:.3e}"
             )
 
-            # try to report minimum SDF distance along current trajectory (diagnostic only)
-            # 直接读 ObstacleConstraint 在本轮 addObstacleGradCost 中顺手记录的 min_dist，
-            # 避免对轨迹再做一次完整重采样（之前是 200+ 次额外 ESDF 查询）。
-            if self.grid_map is not None and len(self.obsConstr_container) > 0:
+            # try to report minimum distance along current trajectory (diagnostic only)
+            if self.obstacle_method == 'esdf' and self.grid_map is not None and len(self.obsConstr_container) > 0:
                 try:
                     min_d = min(oc.min_dist for oc in self.obsConstr_container)
                     if np.isfinite(min_d):
                         msg += f" min_sdf={min_d:.3f}"
+                except Exception:
+                    pass
+            elif self.obstacle_method == 'sfc' and len(self.sfcConstr_container) > 0:
+                try:
+                    min_d = min(sc.min_dist for sc in self.sfcConstr_container)
+                    if np.isfinite(min_d):
+                        msg += f" min_corridor_dist={min_d:.3f}"
                 except Exception:
                     pass
 

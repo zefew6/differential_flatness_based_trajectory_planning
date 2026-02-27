@@ -5,18 +5,22 @@ trajectory in the same mujoco scene used by `test_astar.py`.
 Usage:
   1) Activate the MINCO virtualenv in your shell:
        source /home/hac/Differential_Flatness/MAS/MINCO/bin/activate
-  2) Run this script from anywhere (it will load the model using a relative path):
+  2) Run this script from anywhere:
+       # ESDF 方法（默认，基于距离场）
        python3 planning/examples/test_minco_planner.py
+       python3 planning/examples/test_minco_planner.py --method esdf
+
+       # SFC 方法（基于凸走廊，类似 Dftpav）
+       python3 planning/examples/test_minco_planner.py --method sfc
 
 The script will:
-  - load a mujoco model `m0/assets/test_world.xml`
+  - load a mujoco model `m0/assets/rrt_connect_scene.xml`
   - construct a grid map and obstacle set (from m0/minco_planner/map_obstacles.py)
-  - run the PolyTrajOptimizer to optimize a MINCO trajectory
+  - run the PolyTrajOptimizer with the selected obstacle method
   - render the optimized trajectory points as small spheres in Mujoco
-
-This file intentionally keeps things simple and interactive (like `test_astar.py`).
 """
 
+import argparse
 import os
 import sys
 import time
@@ -40,9 +44,16 @@ from m0.minco_planner import MINCO, PolyTrajOptimizer
 from m0.planning.a_star import graph_search
 from m0.utils.gridmap_2d_v2 import GridMap2D
 
+# SFC 方法：走廊生成工具
+from m0.minco_planner.minco_corridor_builder import (
+    build_corridors,
+    extract_obs_points_from_gridmap,
+)
+
 # Import viewer via package path under planning_root
 from m0.viewer.mujoco_visualization import MujocoViewer
 
+from m0.robot.robot import Robot
 
 def sample_traj_xy(minco_obj, n=800):
     t_total = float(np.sum(minco_obj.T))
@@ -52,46 +63,91 @@ def sample_traj_xy(minco_obj, n=800):
 
 
 def main():
+    # ── 命令行参数 ────────────────────────────────────────────────────────
+    parser = argparse.ArgumentParser(description="MINCO Planner test")
+    parser.add_argument(
+        "--method", choices=["esdf", "sfc"], default="esdf",
+        help="障碍物处理方法：esdf（ESDF距离场，默认）或 sfc（凸走廊，类似Dftpav）"
+    )
+    parser.add_argument("--no-plot", action="store_true", help="跳过可视化，仅运行优化")
+    args = parser.parse_args()
+    obstacle_method = args.method
+    print(f"[test_minco_planner] obstacle_method = '{obstacle_method}'")
     # load mujoco model (same xml as test_astar)
-    xml_path = os.path.join(planning_root, "m0", "assets", "test_world.xml")
+    xml_path = os.path.join(planning_root, "m0", "assets", "rrt_connect_scene.xml")
     if not os.path.exists(xml_path):
         raise FileNotFoundError(f"mujoco xml not found: {xml_path}")
 
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
 
+    robot = Robot(model, data, robot_body_name="pusher1", actuator_names=["forward", "turn"], max_v=1.0, max_w=1.0)
     # viewer
     mjv = MujocoViewer(model, data)
+    
     mjv.set_camera(distance=20.0, azimuth=0, elevation=-30, lookat=[5, 5, 0])
     # Problem definition: we'll generate an initial discrete path with A* and
     # then feed a downsampled version of that path (inner waypoints) to MINCO.
-    head_pos = np.array([0, 0.2])
-    tail_pos = np.array([9, 8.4])
+    head_pos = np.array([-4.0, 3.5])
+    tail_pos = np.array([3.8, -4.0])
 
     # Build the GridMap2D：继承自 GridMap，同时支持 A*（占用格、坐标转换）
     # 和 MINCO 优化器（get_distance_and_gradient），只需构建一次
-    grid_map = GridMap2D(model=model, data=data, resolution=0.05, width=20.0, height=20.0,
-                        robot_radius=0.3, margin=0.1)
+    grid_map = GridMap2D(model=model, data=data, resolution=0.05, width=10.0, height=10.0,
+                        robot_radius=0.3, margin=0.1, origin_x=-5.0, origin_y=-5.0)
 
     path = graph_search(start=head_pos, goal=tail_pos, gridmap=grid_map)
     if path is None:
         raise RuntimeError("A* failed to find a path")
 
-    # grid_map 已经是 GridMap2D，同时具备 A* 接口和 ESDF 接口，直接传给优化器
-    optimizer = PolyTrajOptimizer()
-    # obs_safe_threshold 与 A* 的 inflation_radius（robot_radius+margin=0.4m）对齐，
-    # 避免 MINCO 将轨迹推离 A* 路径太远
-    optimizer.setGridMap(grid_map)
+    # ── 创建优化器（指定障碍物方法）──────────────────────────────────────
+    optimizer = PolyTrajOptimizer(obstacle_method=obstacle_method)
+
+    if obstacle_method == 'esdf':
+        # ESDF 方法：直接传入 grid_map，同时保留 grid_map 用于路径预处理
+        optimizer.setGridMap(grid_map)
+    # SFC 方法的走廊数据会在路径处理后生成
 
     # ── 路径后处理（由优化器完成）─────────────────────────────────────────
     # 1. 可见性剪枝：去掉可被直线跳过的冗余路点
+    # 注意：setGridMap 在两种方法下都要调用，用于 preprocessPath 的碰撞检测
+    if obstacle_method == 'sfc':
+        optimizer.setGridMap(grid_map)   # 仅用于路径预处理，不参与优化代价
     pruned_path = optimizer.preprocessPath(path)
-    # 2. 重采样：每段不超过 1.5m，沿原始 A* 路径取中间点（避免直线插值引发蛇形振荡）
-    resampled_path = optimizer.resamplePath(pruned_path, max_seg_len=1.5, dense_path=path)
+    # 2. 重采样：每段不超过 3m，沿原始 A* 路径取中间点
+    resampled_path = optimizer.resamplePath(pruned_path, max_seg_len=3, dense_path=path)
     print(f"A* raw: {len(path)} pts → pruned: {len(pruned_path)} → resampled: {len(resampled_path)}")
 
     # 内部路点（去掉首尾）
     inner_pts = resampled_path[1:-1]  # shape (M, 2)
+
+    # ── SFC 方法：生成走廊 ──────────────────────────────────────────────
+    if obstacle_method == 'sfc':
+        t_sfc0 = time.time()
+        # 提取障碍物点云（下采样 2 倍加速）
+        obs_pts = extract_obs_points_from_gridmap(grid_map, subsample=2)
+        print(f"[SFC] Extracted {len(obs_pts)} obstacle points")
+
+        # 地图边界（origin + size）
+        map_bounds = (
+            grid_map.min_boundary[0], grid_map.min_boundary[1],
+            grid_map.max_boundary[0], grid_map.max_boundary[1],
+        )
+        # 走廊按 resampled_path 的路段生成（piece_num = len(resampled_path)-1）
+        full_pts = np.vstack([head_pos, inner_pts, tail_pos])  # (N, 2)
+        hPolys_per_piece = build_corridors(
+            waypoints=full_pts,
+            obs_pts=obs_pts,
+            search_radius=6.0,
+            flip_radius=100.0,
+            map_bounds=map_bounds,
+        )
+        # setSFCCorridors 接受 list of list（每条轨迹的走廊列表）
+        optimizer.setSFCCorridors([hPolys_per_piece])
+        # SFC 方法无需单独的 safe_margin，走廊已含膨胀（robot_radius=0.3m 已在 GridMap 中）
+        optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
+        print(f"[SFC] Built {len(hPolys_per_piece)} corridor segments in "
+              f"{(time.time()-t_sfc0)*1000:.1f} ms")
 
     # Build head/tail pva arrays (zero vel/acc at start and goal)
     head_pva = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])

@@ -52,12 +52,14 @@ class GridMap2D(GridMap):
 
     def __init__(self, model_or_params=None, data=None, resolution=None,
                  width=None, height=None, robot_radius=None, margin=None,
-                 *, model=None):
+                 *, model=None, origin_x: float = 0.0, origin_y: float = 0.0):
+        # origin 必须在 super().__init__() 之前设置，因为父类会调用 create_grid()
+        self.origin_x = float(origin_x)
+        self.origin_y = float(origin_y)
+
         if isinstance(model_or_params, GridMap2DParams):
             # ── 无 MuJoCo 构造路径 ──────────────────────────────────────
             p = model_or_params
-            # 用哨兵值调父类（不传 mujoco model），父类 __init__ 会 create_grid()
-            # 但 self.model.ngeom 会报错，所以我们绕过父类，手动初始化必要字段
             self.model = None
             self.data = None
             self.resolution = p.resolution
@@ -68,14 +70,10 @@ class GridMap2D(GridMap):
             self.robot_radius = p.robot_radius
             self.margin = p.margin
             self.inflation_radius = p.robot_radius + p.margin
-            # 占据格初始化为全空闲
             self.grid = np.zeros((self.grid_height, self.grid_width), dtype=np.float32)
             self._params = p
         else:
             # ── 原有 MuJoCo 构造路径 ────────────────────────────────────
-            # 兼容两种调用方式：
-            #   GridMap2D(model, data, res, w, h, rr, m)          位置参数
-            #   GridMap2D(model=model, data=data, resolution=...) 关键字参数
             actual_model = model if model is not None else model_or_params
             super().__init__(actual_model, data, resolution, width, height,
                              robot_radius, margin)
@@ -108,12 +106,77 @@ class GridMap2D(GridMap):
     @property
     def min_boundary(self):
         """地图左下角世界坐标 [x_min, y_min]。"""
-        return np.array([0.0, 0.0])
+        return np.array([self.origin_x, self.origin_y])
 
     @property
     def max_boundary(self):
         """地图右上角世界坐标 [x_max, y_max]。"""
-        return np.array([self.width, self.height])
+        return np.array([self.origin_x + self.width, self.origin_y + self.height])
+
+    # ------------------------------------------------------------------
+    # 坐标转换（重写父类，加入 origin 偏移）
+    # ------------------------------------------------------------------
+
+    def coor_to_index(self, coor):
+        x, y = coor[0], coor[1]
+        col = int((x - self.origin_x + self.resolution / 2) / self.resolution)
+        row = int((y - self.origin_y + self.resolution / 2) / self.resolution)
+        return row, col
+
+    def index_to_coor(self, ind):
+        row, col = ind[0], ind[1]
+        x = self.origin_x + (col - self.resolution / 2) * self.resolution
+        y = self.origin_y + (row - self.resolution / 2) * self.resolution
+        return x, y
+
+    # ------------------------------------------------------------------
+    # 父类 _add_box / _add_sphere / _add_cylinder 重写（加入 origin 偏移）
+    # ------------------------------------------------------------------
+
+    def _add_box(self, geom_id):
+        import mujoco as _mj
+        center = self.data.geom_xpos[geom_id]
+        lx, ly, _ = self.model.geom_size[geom_id]
+        R = self.data.geom_xmat[geom_id].reshape(3, 3)
+        inf = self.inflation_radius
+        local_pts = np.array([
+            [-lx - inf, -ly - inf],
+            [ lx + inf, -ly - inf],
+            [ lx + inf,  ly + inf],
+            [-lx - inf,  ly + inf],
+        ])
+        world_pts = np.dot(local_pts, R[:2, :2].T) + center[:2]
+        res = float(self.resolution)
+        for i in range(self.grid_width):
+            for j in range(self.grid_height):
+                x = self.origin_x + (i + 0.5) * res
+                y = self.origin_y + (j + 0.5) * res
+                if self._point_in_polygon(np.array([x, y]), world_pts):
+                    self.grid[j, i] = 1
+
+    def _add_sphere(self, geom_id):
+        center = self.data.geom_xpos[geom_id]
+        radius = self.model.geom_size[geom_id][0]
+        res = float(self.resolution)
+        inf = self.inflation_radius
+        for i in range(self.grid_width):
+            for j in range(self.grid_height):
+                x = self.origin_x + (i + 0.5) * res
+                y = self.origin_y + (j + 0.5) * res
+                if (x - center[0])**2 + (y - center[1])**2 <= (radius + inf)**2:
+                    self.grid[j, i] = 1
+
+    def _add_cylinder(self, geom_id):
+        center = self.data.geom_xpos[geom_id]
+        radius = self.model.geom_size[geom_id][0]
+        res = float(self.resolution)
+        inf = self.inflation_radius
+        for i in range(self.grid_width):
+            for j in range(self.grid_height):
+                x = self.origin_x + (i + 0.5) * res
+                y = self.origin_y + (j + 0.5) * res
+                if (x - center[0])**2 + (y - center[1])**2 <= (radius + inf)**2:
+                    self.grid[j, i] = 1
 
     # ------------------------------------------------------------------
     # 占据格写入 / 障碍物添加
@@ -299,25 +362,21 @@ class GridMap2D(GridMap):
         self._ensure_esdf()
         x, y = float(pos_xy[0]), float(pos_xy[1])
 
-        # 边界外认为安全（距离很大）
-        if x < 0 or x > self.width or y < 0 or y > self.height:
+        if x < self.origin_x or x > self.origin_x + self.width or \
+           y < self.origin_y or y > self.origin_y + self.height:
             return float("inf")
 
         res = float(self.resolution)
         nx, ny = int(self.grid_width), int(self.grid_height)
 
-        # 计算所在 cell（以 cell 中心为参考做双线性插值）
-        # cell center: cx = (col+0.5)*res, cy = (row+0.5)*res
-        # => col_f = x/res - 0.5, row_f = y/res - 0.5
-        col_f = x / res - 0.5
-        row_f = y / res - 0.5
+        col_f = (x - self.origin_x) / res - 0.5
+        row_f = (y - self.origin_y) / res - 0.5
         col0 = int(np.clip(int(col_f), 0, nx - 2))
         row0 = int(np.clip(int(row_f), 0, ny - 2))
 
         dx = np.clip(col_f - col0, 0.0, 1.0)
         dy = np.clip(row_f - row0, 0.0, 1.0)
 
-        # esdf[col, row]
         v00 = float(self.esdf[col0,     row0    ])
         v10 = float(self.esdf[col0 + 1, row0    ])
         v01 = float(self.esdf[col0,     row0 + 1])
@@ -335,14 +394,15 @@ class GridMap2D(GridMap):
         self._ensure_esdf()
         x, y = float(pos_xy[0]), float(pos_xy[1])
 
-        if x < 0 or x > self.width or y < 0 or y > self.height:
+        if x < self.origin_x or x > self.origin_x + self.width or \
+           y < self.origin_y or y > self.origin_y + self.height:
             return float("inf"), np.zeros(2, dtype=np.float64)
 
         res = float(self.resolution)
         nx, ny = int(self.grid_width), int(self.grid_height)
 
-        col_f = x / res - 0.5
-        row_f = y / res - 0.5
+        col_f = (x - self.origin_x) / res - 0.5
+        row_f = (y - self.origin_y) / res - 0.5
         col0 = int(np.clip(int(col_f), 0, nx - 2))
         row0 = int(np.clip(int(row_f), 0, ny - 2))
 
@@ -361,24 +421,13 @@ class GridMap2D(GridMap):
             + v11 * dx * dy
         )
 
-        # 梯度（对双线性函数求偏导，再除以 res 换算到世界坐标单位）
         grad_x = ((v10 - v00) * (1 - dy) + (v11 - v01) * dy) / res
         grad_y = ((v01 - v00) * (1 - dx) + (v11 - v10) * dx) / res
 
         return float(dist), np.array([grad_x, grad_y], dtype=np.float64)
 
     def get_distance_and_gradient_batch(self, positions: np.ndarray):
-        """批量查询 ESDF 距离与梯度（向量化实现，比逐点调用快 10-50x）。
-
-        参数
-        ----
-        positions : (N, 2) 数组，每行为 (x, y) 世界坐标
-
-        返回
-        ----
-        distances : (N,) 数组，越界点返回 inf
-        gradients : (N, 2) 数组，越界点返回 (0, 0)
-        """
+        """批量查询 ESDF 距离与梯度（向量化实现，比逐点调用快 10-50x）。"""
         self._ensure_esdf()
         positions = np.asarray(positions, dtype=np.float64)
         N = len(positions)
@@ -388,7 +437,8 @@ class GridMap2D(GridMap):
         distances = np.full(N, np.inf, dtype=np.float64)
         gradients = np.zeros((N, 2), dtype=np.float64)
 
-        valid = (x >= 0) & (x <= self.width) & (y >= 0) & (y <= self.height)
+        valid = (x >= self.origin_x) & (x <= self.origin_x + self.width) & \
+                (y >= self.origin_y) & (y <= self.origin_y + self.height)
         if not np.any(valid):
             return distances, gradients
 
@@ -398,8 +448,8 @@ class GridMap2D(GridMap):
         xv = x[valid]
         yv = y[valid]
 
-        col_f = xv / res - 0.5
-        row_f = yv / res - 0.5
+        col_f = (xv - self.origin_x) / res - 0.5
+        row_f = (yv - self.origin_y) / res - 0.5
         col0 = np.clip(col_f.astype(np.int32), 0, nx - 2)
         row0 = np.clip(row_f.astype(np.int32), 0, ny - 2)
 
