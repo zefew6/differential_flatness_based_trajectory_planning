@@ -32,7 +32,7 @@ Obstacle = Dict[str, object]
 #
 # 坐标系：map frame（与 minco_test.py 构建的 GridMap2D 一致）
 OBSTACLES: List[Obstacle] = [
-    {"type": "circle", "cx": 9.5, "cy": 9.5, "r": 1.2},
+    {"type": "circle", "cx": 9.5, "cy": 9.5, "r": 2.1},
     # 矩形示例（轴对齐 bounding box）
     {"type": "rect", "xmin": 3.0, "xmax": 5.0, "ymin": 12.0, "ymax": 14.0},
     # 三角形示例（多边形）

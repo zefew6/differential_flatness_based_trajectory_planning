@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     # init viewer
     mjv = MujocoViewer(model, data)
-
+    mjv.set_camera(distance=10.0, azimuth=90, elevation=-30, lookat=[0, 0, 0])
     # create robot instance in sim
     robot1 = Robot(model, data, robot_body_name="pusher1", actuator_names=["forward", "turn"], max_v=1.0, max_w=1.0)
 

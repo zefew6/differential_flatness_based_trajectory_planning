@@ -19,12 +19,13 @@ class PolyTrajOptimizer:
     def __init__(self):
         """初始化优化器"""
         # 优化参数 - 平衡收敛性和约束满足
-        self.wei_time = 1.0        # 时间权重（低→允许时间延长）
-        self.wei_feas = 5.0      # 可行性权重（适中，避免梯度爆炸）
+        self.wei_time = 10.0        # 时间权重（低→允许时间延长）
+        self.wei_feas = 500.0      # 可行性权重（适中，避免梯度爆炸）
         # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
-        # 之前 1e3 往往会被 time/jerk 项“淹没”，导致轨迹仍穿入安全圈
-        self.wei_obs = 100000.0
+        # 之前 1e3 往往会被 time/jerk 项"淹没"，导致轨迹仍穿入安全圈
+        self.wei_obs = 1000.0
         self.wei_surround = 5000.0 # 动态障碍物权重
+        self.obs_safe_threshold = 0.01  # 障碍安全距离（米），与 A* inflation_radius 对齐
         
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
         
@@ -70,9 +71,181 @@ class PolyTrajOptimizer:
 
         grid_map 需要提供：
             get_distance_and_gradient(pos)->(dist, grad)
+        同时也应提供 coor_to_index / is_valid_index / is_occupied_index
+        以支持 preprocessPath 的可见性剪枝。
         """
         self.grid_map = grid_map
-        
+
+    # ------------------------------------------------------------------
+    # 路径预处理：可见性剪枝  （参考 ST-opt-tools AStar::optimizePath）
+    # ------------------------------------------------------------------
+
+    def _check_line_collision(self, p1, p2) -> bool:
+        """Bresenham 直线检测：p1→p2 之间是否经过占据格。有碰撞返回 True。"""
+        gm = self.grid_map
+        r1, c1 = gm.coor_to_index(p1)
+        r2, c2 = gm.coor_to_index(p2)
+        dr, dc = abs(r2 - r1), abs(c2 - c1)
+        sr = 1 if r2 > r1 else -1
+        sc = 1 if c2 > c1 else -1
+        err = dr - dc
+        r, c = r1, c1
+        while True:
+            idx = (r, c)
+            if gm.is_valid_index(idx) and gm.is_occupied_index(idx):
+                return True
+            if r == r2 and c == c2:
+                break
+            e2 = 2 * err
+            if e2 > -dc:
+                err -= dc
+                r += sr
+            if e2 < dr:
+                err += dr
+                c += sc
+        return False
+
+    def preprocessPath(self, path) -> np.ndarray:
+        """对 A* 原始路径做可见性剪枝，返回仅保留转角点的精简路径（含首尾）。
+
+        参数
+        ----
+        path : np.ndarray, shape (N, 2)
+            A* 输出的稠密路径（每步一个栅格）。
+
+        返回
+        ----
+        pruned : np.ndarray, shape (M, 2)
+            精简后的路径，M << N。内部路点 pruned[1:-1] 即为 MINCO 的 inner_pts。
+        """
+        if self.grid_map is None:
+            raise RuntimeError("Call setGridMap() before preprocessPath().")
+        path = np.asarray(path)
+        if len(path) <= 2:
+            return path
+        pruned = [path[0]]
+        prev = path[0]
+        i = 1
+        while i < len(path) - 1:
+            # 若能从 prev 直线无碰到 path[i+1]，则跳过 path[i]
+            if not self._check_line_collision(prev, path[i + 1]):
+                i += 1
+            else:
+                pruned.append(path[i])
+                prev = path[i]
+                i += 1
+        pruned.append(path[-1])
+        return np.array(pruned)
+
+    def resamplePath(self, path, max_seg_len: float = 1.5,
+                     dense_path: np.ndarray = None) -> np.ndarray:
+        """对路径按固定弧长重采样，使每段长度不超过 max_seg_len。
+
+        目的：剪枝后路点数过少（段过长），MINCO 多项式会产生与 A* 无关的大弧。
+        重采样后给 MINCO 足够的形状约束，让优化结果贴近原始路径。
+
+        参数
+        ----
+        path : np.ndarray, shape (N, 2)
+            待重采样路径（通常是 preprocessPath 剪枝后的稀疏路径）。
+        max_seg_len : float
+            最大段长（米），默认 1.5m
+        dense_path : np.ndarray, shape (K, 2), optional
+            原始稠密路径（如 A* 输出）。若提供，则在稀疏段之间沿稠密路径
+            抽取中间路点，**避免直线插值穿越障碍边界** 而引发蛇形振荡。
+            若不提供，则退化为直线插值。
+
+        返回
+        ----
+        resampled : np.ndarray, shape (M, 2)，M >= N
+        """
+        path = np.asarray(path, dtype=float)
+        if len(path) < 2:
+            return path
+
+        # ── 若提供稠密路径，在稀疏段间沿稠密路径抽取中间点 ──────────────────
+        if dense_path is not None:
+            dense_path = np.asarray(dense_path, dtype=float)
+            result = [path[0]]
+            for i in range(len(path) - 1):
+                p0, p1 = path[i], path[i + 1]
+                seg_len = np.linalg.norm(p1 - p0)
+                if seg_len > max_seg_len:
+                    # 在 dense_path 中找到属于本段的区间（最近邻索引）
+                    d0 = np.linalg.norm(dense_path - p0, axis=1)
+                    d1 = np.linalg.norm(dense_path - p1, axis=1)
+                    idx0 = int(np.argmin(d0))
+                    idx1 = int(np.argmin(d1))
+                    if idx0 > idx1:
+                        idx0, idx1 = idx1, idx0
+                    # 从稠密路径的对应区间中均匀抽取中间点
+                    segment = dense_path[idx0:idx1 + 1]
+                    if len(segment) > 2:
+                        n_insert = int(np.ceil(seg_len / max_seg_len)) - 1
+                        # 按弧长均匀抽取 n_insert 个中间点
+                        arc = np.cumsum(
+                            np.r_[0, np.linalg.norm(np.diff(segment, axis=0), axis=1)]
+                        )
+                        total_arc = arc[-1]
+                        for k in range(1, n_insert + 1):
+                            s = total_arc * k / (n_insert + 1)
+                            j = np.searchsorted(arc, s, side='right') - 1
+                            j = min(j, len(segment) - 2)
+                            alpha = (s - arc[j]) / (arc[j + 1] - arc[j] + 1e-12)
+                            pt = segment[j] + alpha * (segment[j + 1] - segment[j])
+                            result.append(pt)
+                result.append(p1)
+            return np.array(result)
+
+        # ── 退化模式：直线插值（无稠密路径时使用）────────────────────────────
+        result = [path[0]]
+        for i in range(len(path) - 1):
+            p0, p1 = path[i], path[i + 1]
+            seg_len = np.linalg.norm(p1 - p0)
+            if seg_len > max_seg_len:
+                n_insert = int(np.ceil(seg_len / max_seg_len)) - 1
+                for k in range(1, n_insert + 1):
+                    t = k / (n_insert + 1)
+                    result.append(p0 + t * (p1 - p0))
+            result.append(p1)
+        return np.array(result)
+
+    # ------------------------------------------------------------------
+    # 时间分配：梯形速度曲线  （参考 ST-opt-tools AStar::evaluateDuration）
+    # ------------------------------------------------------------------
+
+    def allocateTime(self, waypoints) -> np.ndarray:
+        """按梯形速度曲线为各段分配飞行时间。
+
+        参数
+        ----
+        waypoints : np.ndarray, shape (K, 2)
+            包含首尾的完整路点序列（head + inner_pts + tail）。
+
+        返回
+        ----
+        durations : np.ndarray, shape (K-1,)
+            每段的时间分配（秒）。
+        """
+        waypoints = np.asarray(waypoints)
+        dists = np.linalg.norm(np.diff(waypoints, axis=0), axis=1)
+        durations = np.array([self._trapezoid_duration(d) for d in dists])
+        # 保证不低于最小段时间
+        return np.maximum(durations, self.mini_T)
+
+    def _trapezoid_duration(self, length: float) -> float:
+        """单段梯形速度曲线时间（起止速度均为 0）。"""
+        v = self.max_vel
+        a = self.max_acc
+        if length < 1e-6:
+            return self.mini_T
+        critical_len = v * v / a          # 刚好能加速到 max_vel 再减速所需路程
+        if length >= critical_len:
+            return 2.0 * v / a + (length - critical_len) / v
+        else:
+            v_peak = np.sqrt(a * length)  # 三角形速度曲线
+            return 2.0 * v_peak / a
+
     def setParam(self, wei_time=None, wei_feas=None, mini_T=None, 
                  lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None,
                  wei_obs=None, obs_safe_threshold=None):
@@ -107,6 +280,7 @@ class PolyTrajOptimizer:
                 obsConstr.wei_obs = float(wei_obs)
 
         if obs_safe_threshold is not None:
+            self.obs_safe_threshold = float(obs_safe_threshold)  # 存到 self，供创建容器时使用
             # propagate to already-created containers
             for obsConstr in getattr(self, 'obsConstr_container', []):
                 obsConstr.safe_threshold = float(obs_safe_threshold)
@@ -118,14 +292,17 @@ class PolyTrajOptimizer:
         """
         self.debug_print_every = int(n)
     
-    def OptimizeTrajectory(self, iniStates, finStates, initInnerPts, initTs):
+    def OptimizeTrajectory(self, iniStates, finStates, initInnerPts, initTs,
+                           initSegTs=None):
         """优化轨迹
         
         参数:
             iniStates: 起始状态列表，每个元素 shape (3, 2) - [[px,py], [vx,vy], [ax,ay]]
             finStates: 终止状态列表，每个元素 shape (3, 2)
             initInnerPts: 初始内部航点列表，每个元素 shape (N, 2) - N行2列
-            initTs: 初始时间分配，shape (trajnum,)
+            initTs: 初始时间分配，shape (trajnum,)，每条轨迹的总时间
+            initSegTs: 可选，按段时间列表，list of ndarray shape (piece_num,)
+                       若提供则用于初始化各段时间，忽略 initTs 的等分逻辑
         
         返回:
             success: 是否优化成功
@@ -181,7 +358,7 @@ class PolyTrajOptimizer:
 
             # 创建 ObstacleConstraint（避障项会在 cost callback 里按需启用）
             obsConstr = ObstacleConstraint(
-                safe_threshold=0.5,  # 可按需从外部暴露参数
+                safe_threshold=self.obs_safe_threshold,  # 使用 setParam 设置的值
                 wei_obs=self.wei_obs,
                 traj_resolution=self.traj_resolution,
                 destraj_resolution=self.destraj_resolution,
@@ -207,10 +384,19 @@ class PolyTrajOptimizer:
         # 时间（转换为虚拟时间）- 每段独立
         for i in range(self.trajnum):
             piece_num = self.piece_num_container[i]
-            # 将总时间平均分配给各段作为初始值
-            dt_init = initTs[i] / piece_num
-            segment_times = np.full(piece_num, dt_init)
-            
+            if initSegTs is not None and i < len(initSegTs):
+                # 使用外部提供的按段时间（来自梯形速度分配）
+                segment_times = np.array(initSegTs[i], dtype=float)
+                if len(segment_times) != piece_num:
+                    # 长度不匹配时退化为等分
+                    dt_init = initTs[i] / piece_num
+                    segment_times = np.full(piece_num, dt_init)
+            else:
+                # 将总时间平均分配给各段作为初始值
+                dt_init = initTs[i] / piece_num
+                segment_times = np.full(piece_num, dt_init)
+            segment_times = np.maximum(segment_times, self.mini_T)
+
             VT = np.zeros(piece_num)
             self.RealT2VirtualT(segment_times, VT)
             x0[offset:offset + piece_num] = VT

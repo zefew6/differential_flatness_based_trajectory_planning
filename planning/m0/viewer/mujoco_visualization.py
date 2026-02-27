@@ -20,6 +20,30 @@ class MujocoViewer():
 
         self.max_geoms = len(self.viewer.user_scn.geoms)
 
+    def set_camera(self, distance=None, azimuth=None, elevation=None, lookat=None):
+        """
+        Set the camera view parameters.
+        
+        Args:
+            distance: Distance from the camera to the lookat point
+            azimuth: Horizontal rotation angle in degrees (0-360)
+            elevation: Vertical angle in degrees (-90 to 90)
+            lookat: 3D point [x, y, z] that the camera looks at
+        """
+        if not self.viewer.is_running():
+            raise RuntimeError("[MujocoViewer]: Viewer window is closed")
+        
+        cam = self.viewer.cam
+        
+        if distance is not None:
+            cam.distance = distance
+        if azimuth is not None:
+            cam.azimuth = azimuth
+        if elevation is not None:
+            cam.elevation = elevation
+        if lookat is not None:
+            cam.lookat[:] = lookat
+
 
     def draw_point(self, pt, size=0.05, rgba=np.array([1, 0, 0, 1])):
         """
