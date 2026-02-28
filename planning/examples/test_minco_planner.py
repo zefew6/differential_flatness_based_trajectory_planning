@@ -40,15 +40,9 @@ if planning_root not in sys.path:
 
 from m0.minco_planner import MINCO, PolyTrajOptimizer
 
-# Import A* and GridMap2D (继承自 GridMap，同时支持 A* 和 MINCO 优化器)
+# Import A* and GridMap2D（避障核心模块，包含 ESDF + SFC + 约束类）
 from m0.planning.a_star import graph_search
-from m0.utils.gridmap_2d_v2 import GridMap2D
-
-# SFC 方法：走廊生成工具
-from m0.minco_planner.minco_corridor_builder import (
-    build_corridors,
-    extract_obs_points_from_gridmap,
-)
+from m0.minco_planner.minco_obstacle import GridMap2D
 
 # Import viewer via package path under planning_root
 from m0.viewer.mujoco_visualization import MujocoViewer
@@ -89,7 +83,7 @@ def main():
     # Problem definition: we'll generate an initial discrete path with A* and
     # then feed a downsampled version of that path (inner waypoints) to MINCO.
     head_pos = np.array([-4.0, 3.5])
-    tail_pos = np.array([3.8, -4.0])
+    tail_pos = np.array([3.8, 0.0])
 
     # Build the GridMap2D：继承自 GridMap，同时支持 A*（占用格、坐标转换）
     # 和 MINCO 优化器（get_distance_and_gradient），只需构建一次
@@ -102,59 +96,27 @@ def main():
 
     # ── 创建优化器（指定障碍物方法）──────────────────────────────────────
     optimizer = PolyTrajOptimizer(obstacle_method=obstacle_method)
-
-    if obstacle_method == 'esdf':
-        # ESDF 方法：直接传入 grid_map，同时保留 grid_map 用于路径预处理
-        optimizer.setGridMap(grid_map)
-    # SFC 方法的走廊数据会在路径处理后生成
+    optimizer.setGridMap(grid_map)   # 两种方法都需要（路径预处理 + ESDF 代价）
 
     # ── 路径后处理（由优化器完成）─────────────────────────────────────────
-    # 1. 可见性剪枝：去掉可被直线跳过的冗余路点
-    # 注意：setGridMap 在两种方法下都要调用，用于 preprocessPath 的碰撞检测
-    if obstacle_method == 'sfc':
-        optimizer.setGridMap(grid_map)   # 仅用于路径预处理，不参与优化代价
     pruned_path = optimizer.preprocessPath(path)
-    # 2. 重采样：每段不超过 3m，沿原始 A* 路径取中间点
     resampled_path = optimizer.resamplePath(pruned_path, max_seg_len=3, dense_path=path)
     print(f"A* raw: {len(path)} pts → pruned: {len(pruned_path)} → resampled: {len(resampled_path)}")
 
     # 内部路点（去掉首尾）
     inner_pts = resampled_path[1:-1]  # shape (M, 2)
+    full_pts = np.vstack([head_pos, inner_pts, tail_pos])  # (N, 2)
 
-    # ── SFC 方法：生成走廊 ──────────────────────────────────────────────
+    # ── SFC 方法：生成走廊（一行搞定）─────────────────────────────────────
     if obstacle_method == 'sfc':
-        t_sfc0 = time.time()
-        # 提取障碍物点云（下采样 2 倍加速）
-        obs_pts = extract_obs_points_from_gridmap(grid_map, subsample=2)
-        print(f"[SFC] Extracted {len(obs_pts)} obstacle points")
-
-        # 地图边界（origin + size）
-        map_bounds = (
-            grid_map.min_boundary[0], grid_map.min_boundary[1],
-            grid_map.max_boundary[0], grid_map.max_boundary[1],
-        )
-        # 走廊按 resampled_path 的路段生成（piece_num = len(resampled_path)-1）
-        full_pts = np.vstack([head_pos, inner_pts, tail_pos])  # (N, 2)
-        hPolys_per_piece = build_corridors(
-            waypoints=full_pts,
-            obs_pts=obs_pts,
-            search_radius=6.0,
-            flip_radius=100.0,
-            map_bounds=map_bounds,
-        )
-        # setSFCCorridors 接受 list of list（每条轨迹的走廊列表）
-        optimizer.setSFCCorridors([hPolys_per_piece])
-        # SFC 方法无需单独的 safe_margin，走廊已含膨胀（robot_radius=0.3m 已在 GridMap 中）
+        optimizer.buildSFCCorridors(full_pts, search_radius=6.0)
         optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
-        print(f"[SFC] Built {len(hPolys_per_piece)} corridor segments in "
-              f"{(time.time()-t_sfc0)*1000:.1f} ms")
 
     # Build head/tail pva arrays (zero vel/acc at start and goal)
     head_pva = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
     tail_pva = np.array([tail_pos, [0.0, 0.0], [0.0, 0.0]])
 
-    # 2. 梯形速度曲线时间分配（由优化器完成，使用其 max_vel/max_acc 参数）
-    full_pts = np.vstack([head_pos, inner_pts, tail_pos])
+    # 梯形速度曲线时间分配
     durations = optimizer.allocateTime(full_pts)  # shape (piece_num,)
 
     initTs = np.array([np.sum(durations)])
