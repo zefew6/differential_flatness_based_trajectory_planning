@@ -1,10 +1,13 @@
 """
-MINCO (Minimum Control) 轨迹优化 - 二维版本
+MINCO (Minimum Control) 轨迹对象 - 二维版本
 
 包含:
-- MINCO: 五次多项式轨迹生成（C3连续）
-- MinJerkOpt: Jerk优化器
-- PolyTrajOptimizer: 基于L-BFGS的轨迹优化器
+- MINCO: 五次多项式轨迹（C3连续），封装轨迹求解、采样、可视化。
+
+相关模块:
+- minco_MinJerkOpt.py: MinJerkOpt 轨迹优化器（MINCO 的优化包装层）
+- minco_Optimizer.py : PolyTrajOptimizer，基于 L-BFGS 的全轨迹优化器
+- minco_obstacle.py  : 障碍物约束（ESDF / SFC）+ GridMap2D
 """
 
 import numpy as np
@@ -52,7 +55,7 @@ class MINCO:
         # 初始位置和速度
         b[0] = self.head_pva[0]  # p(0)
         b[1] = self.head_pva[1]  # v(0)
-        b[2] = self.head_pva[1]  # a(0)
+        b[2] = self.head_pva[2]  # a(0)
         
         # 初始条件
         A[0, 0] = 1.0  # c0 = p(0)
@@ -133,9 +136,6 @@ class MINCO:
         # print(b)
         # 求解
         coeffs = np.linalg.solve(A, b)
-        # print('A:',A)
-        # print('b:',b)
-        # print('coeffs:',coeffs)
         return coeffs
     
     def eval(self, t):
@@ -339,40 +339,3 @@ class MINCO:
         }
         
         return trajectory
-    
-    # NOTE:
-    # This class previously had a second `plot_trajectory` implementation below which
-    # *overrode* the newer 2x2 kinematics version above and returned None.
-    # That broke callers (e.g. `minco_test.py`) that expect `(fig, axes)`.
-    # The duplicate implementation has been removed to keep a single, consistent API.
-        if show_velocity:
-            axes[ax_idx].plot(time_samples, velocities[:, 0], 'r-', label='Vx')
-            axes[ax_idx].plot(time_samples, velocities[:, 1], 'b-', label='Vy')
-            vel_magnitude = np.linalg.norm(velocities, axis=1)
-            axes[ax_idx].plot(time_samples, vel_magnitude, 'k--', label='|V|', linewidth=2)
-            axes[ax_idx].set_xlabel('Time (s)', fontsize=12)
-            axes[ax_idx].set_ylabel('Velocity (m/s)', fontsize=12)
-            axes[ax_idx].set_title('Velocity Profile', fontsize=14)
-            axes[ax_idx].legend()
-            axes[ax_idx].grid(True, alpha=0.3)
-            ax_idx += 1
-        
-        # 3. 绘制加速度曲线
-        if show_acceleration:
-            axes[ax_idx].plot(time_samples, accelerations[:, 0], 'r-', label='Ax')
-            axes[ax_idx].plot(time_samples, accelerations[:, 1], 'b-', label='Ay')
-            acc_magnitude = np.linalg.norm(accelerations, axis=1)
-            axes[ax_idx].plot(time_samples, acc_magnitude, 'k--', label='|A|', linewidth=2)
-            axes[ax_idx].set_xlabel('Time (s)', fontsize=12)
-            axes[ax_idx].set_ylabel('Acceleration (m/s²)', fontsize=12)
-            axes[ax_idx].set_title('Acceleration Profile', fontsize=14)
-            axes[ax_idx].legend()
-            axes[ax_idx].grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.show(block=False)  # 非阻塞模式，允许同时显示多个窗口
-        plt.pause(0.1)  # 短暂暂停，确保窗口正确渲染
-
-# ============================================================
-# 测试代码
-# ============================================================

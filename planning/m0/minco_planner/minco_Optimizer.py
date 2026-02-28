@@ -3,6 +3,8 @@ from scipy.optimize import minimize
 from .minco_MinJerkOpt import MinJerkOpt
 from .minco_FeasibilityConstraint import FeasibilityConstraint
 from .minco_obstacle import ObstacleConstraint, SFCObstacleConstraint
+
+
 class PolyTrajOptimizer:
     """
     多项式轨迹优化器
@@ -618,7 +620,7 @@ class PolyTrajOptimizer:
             gradT_container.append(gradt_seg)
             offset += piece_num
         
-    # 计算每条轨迹的代价
+        # 计算每条轨迹的代价
         for trajid in range(self.trajnum):
             piece_num = self.piece_num_container[trajid]
             T_seg = T_container[trajid]

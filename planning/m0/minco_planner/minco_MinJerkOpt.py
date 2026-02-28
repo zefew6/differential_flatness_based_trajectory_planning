@@ -1,5 +1,18 @@
+"""
+MinJerkOpt — MINCO 轨迹的 Jerk 优化器
+
+提供 MinJerkOpt 类，封装以下功能：
+- generate(): 给定边界条件和时间分配，调用 MINCO 求解五次多项式系数。
+- initSmGradCost() / getTrajJerkCost(): 计算 Jerk 平方积分代价及其梯度。
+- calGrads_PT(): 通过伴随法将代价梯度从系数空间映射回航点/时间空间。
+
+此类被 PolyTrajOptimizer 用作每条轨迹的内部求解器。
+"""
+
 import numpy as np
 from .minco import MINCO
+
+
 class MinJerkOpt:
     """
     最小 Jerk 优化器 - 用于单条轨迹的优化

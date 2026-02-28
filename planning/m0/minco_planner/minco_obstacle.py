@@ -1,3 +1,15 @@
+"""
+minco_obstacle — 障碍物约束与 ESDF 地图模块
+
+包含：
+- ObstacleConstraint     : 基于 ESDF 距离场的静态障碍物约束（梯度 + 代价）。
+- GridMap2DParams        : GridMap2D 的纯参数构造器（不依赖 MuJoCo）。
+- GridMap2D              : 继承自 GridMap，增加 ESDF 构建与连续距离/梯度查询；
+                           重写 _add_box / _add_sphere / _add_cylinder 以支持 origin 偏移。
+- SFCObstacleConstraint  : 基于安全飞行走廊（凸多面体半平面）的静态障碍物约束。
+- build_corridors        : 为轨迹路点序列批量生成 SFC 走廊（模块级工具函数）。
+- extract_obs_points_from_gridmap : 从 GridMap2D 提取占据栅格的世界坐标点云。
+"""
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple
@@ -60,7 +72,7 @@ class ObstacleConstraint:
     ----
     - 需要外部传入 grid_map 对象，提供：
         get_distance_and_gradient(pos)->(d, grad)
-      推荐使用 `planning/m0/utils/gridmap_2d_v2.py::GridMap2D`。
+      推荐使用 `m0.minco_planner.minco_obstacle.GridMap2D`。
     """
 
     def __init__(
@@ -228,9 +240,10 @@ class GridMap2DParams:
 class GridMap2D(GridMap):
     """GridMap extended with ESDF and continuous distance/gradient queries.
 
-    This is effectively the content formerly in utils/gridmap_2d_v2.py but
-    provided here so obstacle-related functionality lives under
-    `m0.minco_planner.minco_obstacle` as requested.
+    继承自 GridMap（MuJoCo 栅格地图），扩展了：
+    - ESDF 构建（update_esdf）与连续距离/梯度查询（get_distance_and_gradient[_batch]）
+    - _add_box / _add_sphere / _add_cylinder 重写，支持 origin_x/origin_y 偏移
+    - 手动添加障碍物接口：add_circle_obstacle、add_rectangle_obstacle、add_polygon_obstacle
     """
 
     def __init__(self, model_or_params=None, data=None, resolution=None,
