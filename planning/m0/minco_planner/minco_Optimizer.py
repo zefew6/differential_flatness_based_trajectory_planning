@@ -42,7 +42,7 @@ class PolyTrajOptimizer:
         self.obstacle_method = obstacle_method
 
         # 优化参数 - 平衡收敛性和约束满足
-        self.wei_time = 10.0        # 时间权重（低→允许时间延长）
+        self.wei_time = 200.0       # 时间权重（高→规划器倾向短时间轨迹）
         self.wei_feas = 5000.0      # 可行性权重（适中，避免梯度爆炸）
         # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
         self.wei_obs = 1e4
@@ -55,8 +55,8 @@ class PolyTrajOptimizer:
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
         
         # 动力学约束参数 - 参考 Dftpav
-        self.max_vel = 0.85        # 最大速度 (m/s) - 提高限制
-        self.max_acc = 0.1        # 最大加速度 (m/s²) - 提高限制
+        self.max_vel = 2.0         # 最大速度 (m/s)
+        self.max_acc = 2.0         # 最大加速度 (m/s²)
         
         # L-BFGS 优化器参数
         self.lbfgs_memsize = 256   # 内存大小（Dftpav: 256）
@@ -129,52 +129,39 @@ class PolyTrajOptimizer:
 
     def buildSFCCorridors(self, waypoints, search_radius: float = 6.0,
                           subsample: int = 2, n_bins: int = 36) -> list:
-        """从已设置的 grid_map 提取障碍点云并为每段路径生成 SFC 走廊。
+        """从已设置的 grid_map 生成 SFC 走廊并自动注入到优化器。
 
-        等价于以下三步的组合：
-            obs_pts = extract_obs_points_from_gridmap(grid_map, subsample)
-            map_bounds = (xmin, ymin, xmax, ymax)
-            hPolys = build_corridors(waypoints, obs_pts, ..., map_bounds=map_bounds)
-
-        调用后会自动执行 setSFCCorridors([hPolys])，无需手动调用。
+        委托给 minco_obstacle.build_sfc_from_gridmap 一步完成：
+            1. 从 GridMap2D 提取障碍物点云
+            2. 为每段路径生成凸 hPoly 走廊
+            3. 自动调用 setSFCCorridors
 
         参数
         ----
-        waypoints     : np.ndarray shape (N, 2)，包含首尾的完整路点（head+inner+tail）
+        waypoints     : np.ndarray shape (N, 2)，包含首尾的完整路点
         search_radius : 走廊搜索半径（米），默认 6.0
-        subsample     : 障碍点云下采样步长，越大越快但精度略低，默认 2
+        subsample     : 点云下采样步长，默认 2
         n_bins        : 角度分箱数，默认 36
 
         返回
         ----
-        hPolys_per_piece : list of np.ndarray，len = piece_num，同时写入 sfc_corridors_data
+        hPolys : list of np.ndarray，len = piece_num
         """
-        from .minco_obstacle import extract_obs_points_from_gridmap, build_corridors
+        from .minco_obstacle import build_sfc_from_gridmap
         import time as _time
 
         if self.grid_map is None:
             raise RuntimeError("请先调用 setGridMap() 再调用 buildSFCCorridors()。")
 
         t0 = _time.time()
-        obs_pts = extract_obs_points_from_gridmap(self.grid_map, subsample=subsample)
-
-        map_bounds = None
-        if hasattr(self.grid_map, 'min_boundary') and hasattr(self.grid_map, 'max_boundary'):
-            mn = self.grid_map.min_boundary
-            mx = self.grid_map.max_boundary
-            map_bounds = (float(mn[0]), float(mn[1]), float(mx[0]), float(mx[1]))
-
-        hPolys = build_corridors(
-            waypoints=waypoints,
-            obs_pts=obs_pts,
+        hPolys = build_sfc_from_gridmap(
+            self.grid_map, waypoints,
             search_radius=search_radius,
+            subsample=subsample,
             n_bins=n_bins,
-            map_bounds=map_bounds,
         )
-
-        dt_ms = (_time.time() - t0) * 1000
-        print(f"[SFC] Extracted {len(obs_pts)} obstacle points, "
-              f"built {len(hPolys)} corridor segments in {dt_ms:.1f} ms")
+        print(f"[SFC] Built {len(hPolys)} corridor segments in "
+              f"{(_time.time()-t0)*1000:.1f} ms")
 
         self.setSFCCorridors([hPolys])
         return hPolys

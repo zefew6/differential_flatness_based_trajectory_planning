@@ -912,3 +912,43 @@ def extract_obs_points_from_gridmap(grid_map, subsample=1):
     if not pts:
         return np.empty((0, 2))
     return np.array(pts, dtype=np.float64)
+
+
+def build_sfc_from_gridmap(grid_map, waypoints,
+                            search_radius: float = 6.0,
+                            subsample: int = 2,
+                            n_bins: int = 36) -> list:
+    """从 GridMap2D 一步生成完整 SFC 走廊（提取障碍点云 + 构建 hPoly）。
+
+    等价于：
+        obs_pts  = extract_obs_points_from_gridmap(grid_map, subsample)
+        hPolys   = build_corridors(waypoints, obs_pts, ..., map_bounds=...)
+
+    参数
+    ----
+    grid_map      : GridMap2D 实例
+    waypoints     : np.ndarray shape (N, 2)，包含首尾的完整路点
+    search_radius : 走廊搜索半径（米），默认 6.0
+    subsample     : 障碍点云下采样步长，默认 2
+    n_bins        : 角度分箱数，默认 36
+
+    返回
+    ----
+    hPolys : list of np.ndarray，len = piece_num = len(waypoints)-1
+             每个元素 shape (K, 3)，行格式 [nx, ny, b]（n^T p ≤ b）
+    """
+    obs_pts = extract_obs_points_from_gridmap(grid_map, subsample=subsample)
+
+    map_bounds = None
+    if hasattr(grid_map, 'min_boundary') and hasattr(grid_map, 'max_boundary'):
+        mn = grid_map.min_boundary
+        mx = grid_map.max_boundary
+        map_bounds = (float(mn[0]), float(mn[1]), float(mx[0]), float(mx[1]))
+
+    return build_corridors(
+        waypoints=waypoints,
+        obs_pts=obs_pts,
+        search_radius=search_radius,
+        n_bins=n_bins,
+        map_bounds=map_bounds,
+    )

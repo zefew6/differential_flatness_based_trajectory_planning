@@ -1,23 +1,13 @@
 """
-A minimal example to run the MINCO-based planner and visualize the optimized
-trajectory in the same mujoco scene used by `test_astar.py`.
+MINCO 轨迹规划 + 微分平坦跟踪控制 一体化示例
 
-Usage:
-  1) Activate the MINCO virtualenv in your shell:
-       source /home/hac/Differential_Flatness/MAS/MINCO/bin/activate
-  2) Run this script from anywhere:
-       # ESDF 方法（默认，基于距离场）
-       python3 planning/examples/test_minco_planner.py
-       python3 planning/examples/test_minco_planner.py --method esdf
-
-       # SFC 方法（基于凸走廊，类似 Dftpav）
-       python3 planning/examples/test_minco_planner.py --method sfc
-
-The script will:
-  - load a mujoco model `m0/assets/rrt_connect_scene.xml`
-  - construct a grid map and obstacle set (from m0/minco_planner/map_obstacles.py)
-  - run the PolyTrajOptimizer with the selected obstacle method
-  - render the optimized trajectory points as small spheres in Mujoco
+用法
+----
+    source /home/hac/Differential_Flatness/MAS/MINCO/bin/activate
+    # ESDF 方法（默认）
+    python examples/test_minco_planner.py
+    # SFC 凸走廊方法
+    python examples/test_minco_planner.py --method sfc
 """
 
 import argparse
@@ -29,164 +19,166 @@ import numpy as np
 try:
     import mujoco
 except Exception as e:
-    raise RuntimeError("Please activate the MINCO virtualenv where 'mujoco' is installed") from e
+    raise RuntimeError("请先激活含有 mujoco 的 virtualenv") from e
 
-# Ensure the `planning` package root is on sys.path so that `m0` is importable.
-# This is the only path manipulation needed – works on any machine without modification.
-_this_file = os.path.abspath(__file__)
-planning_root = os.path.dirname(os.path.dirname(_this_file))
+# 将 planning 包根目录注入 sys.path
+planning_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
 from m0.minco_planner import MINCO, PolyTrajOptimizer
-
-# Import A* and GridMap2D（避障核心模块，包含 ESDF + SFC + 约束类）
 from m0.planning.a_star import graph_search
 from m0.minco_planner.minco_obstacle import GridMap2D
-
-# Import viewer via package path under planning_root
 from m0.viewer.mujoco_visualization import MujocoViewer
-
 from m0.robot.robot import Robot
+from m0.control import TrajectoryFollower   # ← 跟踪控制器
+
 
 def sample_traj_xy(minco_obj, n=800):
     t_total = float(np.sum(minco_obj.T))
-    ts = np.linspace(0.0, t_total, int(n))
+    ts  = np.linspace(0.0, t_total, int(n))
     pts = np.vstack([minco_obj.eval(t)[0] for t in ts])
-    return ts, pts
+    return pts
 
 
 def main():
-    # ── 命令行参数 ────────────────────────────────────────────────────────
-    parser = argparse.ArgumentParser(description="MINCO Planner test")
-    parser.add_argument(
-        "--method", choices=["esdf", "sfc"], default="esdf",
-        help="障碍物处理方法：esdf（ESDF距离场，默认）或 sfc（凸走廊，类似Dftpav）"
-    )
-    parser.add_argument("--no-plot", action="store_true", help="跳过可视化，仅运行优化")
-    args = parser.parse_args()
-    obstacle_method = args.method
-    print(f"[test_minco_planner] obstacle_method = '{obstacle_method}'")
-    # load mujoco model (same xml as test_astar)
-    xml_path = os.path.join(planning_root, "m0", "assets", "rrt_connect_scene.xml")
-    if not os.path.exists(xml_path):
-        raise FileNotFoundError(f"mujoco xml not found: {xml_path}")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--method", choices=["esdf", "sfc"], default="esdf",
+                        help="障碍物方法：esdf（距离场）或 sfc（凸走廊）")
+    args   = parser.parse_args()
+    method = args.method
+    print(f"[MINCO planner] method = {method}")
 
+    # ── MuJoCo ───────────────────────────────────────────────────────────
+    xml_path = os.path.join(planning_root, "m0", "assets", "minco_scene.xml")
     model = mujoco.MjModel.from_xml_path(xml_path)
-    data = mujoco.MjData(model)
-
-    robot = Robot(model, data, robot_body_name="pusher1", actuator_names=["forward", "turn"], max_v=1.0, max_w=1.0)
-    # viewer
-    mjv = MujocoViewer(model, data)
-    
+    data  = mujoco.MjData(model)
+    robot = Robot(model, data, robot_body_name="pusher1",
+                  actuator_names=["forward", "turn"], max_v=2.0, max_w=4.0)
+    mjv   = MujocoViewer(model, data)
     mjv.set_camera(distance=20.0, azimuth=0, elevation=-30, lookat=[5, 5, 0])
-    # Problem definition: we'll generate an initial discrete path with A* and
-    # then feed a downsampled version of that path (inner waypoints) to MINCO.
-    head_pos = np.array([-4.0, 3.5])
-    tail_pos = np.array([3.8, 0.0])
 
-    # Build the GridMap2D：继承自 GridMap，同时支持 A*（占用格、坐标转换）
-    # 和 MINCO 优化器（get_distance_and_gradient），只需构建一次
-    grid_map = GridMap2D(model=model, data=data, resolution=0.05, width=10.0, height=10.0,
-                        robot_radius=0.3, margin=0.1, origin_x=-5.0, origin_y=-5.0)
+    # ── 地图 & A* ────────────────────────────────────────────────────────
+    head_pos = np.array([-4.0,  4.0])
+    tail_pos = np.array([ 3.8,  0.0])
 
+    grid_map = GridMap2D(model=model, data=data, resolution=0.05,
+                         width=10.0, height=10.0, robot_radius=0.3,
+                         margin=0.1, origin_x=-5.0, origin_y=-5.0)
     path = graph_search(start=head_pos, goal=tail_pos, gridmap=grid_map)
     if path is None:
-        raise RuntimeError("A* failed to find a path")
+        raise RuntimeError("A* 找不到路径")
 
-    # ── 创建优化器（指定障碍物方法）──────────────────────────────────────
-    optimizer = PolyTrajOptimizer(obstacle_method=obstacle_method)
-    optimizer.setGridMap(grid_map)   # 两种方法都需要（路径预处理 + ESDF 代价）
+    # ── 路径预处理 ────────────────────────────────────────────────────────
+    optimizer = PolyTrajOptimizer(obstacle_method=method)
+    optimizer.setGridMap(grid_map)
 
-    # ── 路径后处理（由优化器完成）─────────────────────────────────────────
-    pruned_path = optimizer.preprocessPath(path)
-    resampled_path = optimizer.resamplePath(pruned_path, max_seg_len=3, dense_path=path)
-    print(f"A* raw: {len(path)} pts → pruned: {len(pruned_path)} → resampled: {len(resampled_path)}")
+    pruned    = optimizer.preprocessPath(path)
+    resampled = optimizer.resamplePath(pruned, max_seg_len=3, dense_path=path)
+    inner_pts = resampled[1:-1]
+    full_pts  = np.vstack([head_pos, inner_pts, tail_pos])
+    print(f"A* {len(path)} pts → pruned {len(pruned)} → resampled {len(resampled)}")
 
-    # 内部路点（去掉首尾）
-    inner_pts = resampled_path[1:-1]  # shape (M, 2)
-    full_pts = np.vstack([head_pos, inner_pts, tail_pos])  # (N, 2)
-
-    # ── SFC 方法：生成走廊（一行搞定）─────────────────────────────────────
-    if obstacle_method == 'sfc':
+    # ── SFC 走廊（仅 sfc 方法）──────────────────────────────────────────
+    if method == "sfc":
         optimizer.buildSFCCorridors(full_pts, search_radius=6.0)
         optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
 
-    # Build head/tail pva arrays (zero vel/acc at start and goal)
-    head_pva = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
-    tail_pva = np.array([tail_pos, [0.0, 0.0], [0.0, 0.0]])
+    # ── MINCO 优化 ───────────────────────────────────────────────────────
+    head_pva  = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
+    tail_pva  = np.array([tail_pos, [0.0, 0.0], [0.0, 0.0]])
+    durations = optimizer.allocateTime(full_pts)
 
-    # 梯形速度曲线时间分配
-    durations = optimizer.allocateTime(full_pts)  # shape (piece_num,)
-
-    initTs = np.array([np.sum(durations)])
-    t_start = time.time()
-    print("Starting MINCO optimization (A* initial path -> MINCO)...")
-    success, final_cost = optimizer.OptimizeTrajectory(
-        iniStates=[head_pva],
-        finStates=[tail_pva],
+    t0 = time.time()
+    print("MINCO 优化中…")
+    optimizer.OptimizeTrajectory(
+        iniStates=[head_pva], finStates=[tail_pva],
         initInnerPts=[inner_pts],
-        initTs=initTs,
-        initSegTs=[durations],   # 按段时间，替代等分逻辑
+        initTs=np.array([np.sum(durations)]),
+        initSegTs=[durations],
     )
-    print(f"Optimization took {time.time() - t_start:.3f}s")
-    if not success:
-        print("Optimizer reported failure or did not fully converge, but will still try to visualize result.")
+    print(f"优化完成，耗时 {time.time()-t0:.2f}s")
 
-    opt_traj = optimizer.getOptimizedTrajectories()[0]
-
-    # opt_traj is a MinJerkOpt-like object. It doesn't implement eval(), so
-    # reconstruct a MINCO instance from optimized coefficients+T for sampling.
+    # 重建 MINCO 对象（支持 eval() 接口）
+    opt_traj   = optimizer.getOptimizedTrajectories()[0]
     opt_coeffs = opt_traj.getCoeffs()
-    opt_T = opt_traj.T
-
-    # compute optimized waypoints (positions at the end of each segment except last)
-    waypoints_opt = []
+    opt_T      = opt_traj.T
+    wpts = []
     for i in range(len(opt_T) - 1):
-        c = opt_coeffs[6 * i : 6 * (i + 1), :]
+        c = opt_coeffs[6*i:6*(i+1), :]
         Ti = opt_T[i]
-        # evaluate polynomial at t=Ti
-        pos = (c[0, :] + c[1, :] * Ti + c[2, :] * Ti ** 2 + c[3, :] * Ti ** 3 + c[4, :] * Ti ** 4 + c[5, :] * Ti ** 5)
-        waypoints_opt.append(pos)
-    waypoints_opt = np.array(waypoints_opt)
+        wpts.append(c[0] + c[1]*Ti + c[2]*Ti**2 + c[3]*Ti**3 + c[4]*Ti**4 + c[5]*Ti**5)
+    opt_minco = MINCO(head_pva, tail_pva, np.array(wpts), opt_T)
 
-    # construct a MINCO object for easy evaluation/sampling
-    opt_minco = MINCO(head_pva, tail_pva, waypoints_opt, opt_T)
+    # ── 可视化用轨迹数据 ─────────────────────────────────────────────────
+    def to_xyz(pts_2d, z=0.03):
+        xyz = np.zeros((len(pts_2d), 3)) + z
+        xyz[:, :2] = pts_2d
+        return xyz
 
-    # sample optimized trajectory into XYZ for viewer (set small z)
-    _, pts = sample_traj_xy(opt_minco, n=1000)
-    xyz_opt = np.zeros((pts.shape[0], 3)) + 0.03
-    xyz_opt[:, 0:2] = pts
+    xyz_astar     = to_xyz(path)
+    xyz_resampled = to_xyz(resampled)
+    xyz_opt       = to_xyz(sample_traj_xy(opt_minco, n=1000))
 
-    # A* 原始路径（红色）+ 重采样路点（橙色大球，即 MINCO 初始内部路点）
-    xyz_astar = np.zeros((path.shape[0], 3)) + 0.03
-    xyz_astar[:, 0:2] = path
+    # ── 机器人初始化 ──────────────────────────────────────────────────────
+    _, first_vel, _ = opt_minco.eval(0.05)
+    init_yaw = np.arctan2(first_vel[1] + 1e-9, first_vel[0] + 1e-9)
+    robot.set_state([head_pos[0], head_pos[1], 0.03], init_yaw)
+    mujoco.mj_forward(model, data)
 
-    xyz_resampled = np.zeros((resampled_path.shape[0], 3)) + 0.03
-    xyz_resampled[:, 0:2] = resampled_path
+    # ── 跟踪控制器 ────────────────────────────────────────────────────────
+    follower = TrajectoryFollower(
+        opt_minco,
+        max_v=2.0, max_w=4.0,
+        kx=2.0, ky=2.0, ktheta=3.0,
+        proj_samples=40, proj_window=2.0,
+        vd_min=0.6, a_brake=3.0, goal_tol=0.15,
+    )
+    frame_skip = 5
+    dt_ctrl    = model.opt.timestep * frame_skip
 
-    print("Entering Mujoco viewer. Close the window to exit.")
-    # interactive rendering loop
+    print("进入仿真，按 Ctrl-C 或关闭窗口退出。")
     try:
         while mjv.is_running():
-            # reset geom write pointer so we don't overflow the pre-allocated buffer
+            pos_xy = robot.get_pos()[:2]
+            yaw    = robot.get_yaw()
+
+            if follower.done:
+                # 主动制动：data.cvel 格式 [ωx,ωy,ωz, vx,vy,vz]，取 [3:5] 为线速度
+                vel6  = robot.get_v()
+                v_now = np.hypot(vel6[3], vel6[4])
+                if v_now > 0.08:
+                    robot.set_ctrl(-np.clip(v_now * 2.0, 0.5, 2.0), 0.0)
+                else:
+                    robot.set_ctrl(0.0, 0.0)
+            else:
+                v, w = follower.step(pos_xy, yaw, dt_ctrl)
+                robot.set_ctrl(v, w)
+
+            for _ in range(frame_skip):
+                mujoco.mj_step(model, data)
+
+            # 渲染
             try:
                 mjv.reset(0)
             except TypeError:
-                # fallback for older viewer with reset() signature
-                try:
-                    mjv.reset()
-                except Exception:
-                    pass
+                mjv.reset()
 
-            # 绘制 A* 原始路径（红色，细）
-            mjv.draw_traj(xyz_astar, size=0.02, rgba=np.array([1.0, 0.2, 0.2, 1.0]))
-            # 绘制重采样路点（橙色，显示 MINCO 初始导引点）
+            mjv.draw_traj(xyz_astar,     size=0.02, rgba=np.array([1.0, 0.2, 0.2, 1.0]))
             mjv.draw_traj(xyz_resampled, size=0.04, rgba=np.array([1.0, 0.6, 0.0, 1.0]))
-            # 绘制 MINCO 优化轨迹（绿色）
-            mjv.draw_traj(xyz_opt, size=0.03, rgba=np.array([0.2, 0.8, 0.2, 1.0]))
+            mjv.draw_traj(xyz_opt,       size=0.03, rgba=np.array([0.2, 0.8, 0.2, 1.0]))
+
+            if len(follower.trail) > 1:
+                trail = np.array(follower.trail)
+                xyz_t = np.zeros((len(trail), 3)) + 0.05
+                xyz_t[:, :2] = trail
+                mjv.draw_traj(xyz_t, size=0.025, rgba=np.array([0.0, 0.9, 0.9, 0.9]))
+
+            ref_p = follower.ref_point
+            mjv.draw_point(np.array([ref_p[0], ref_p[1], 0.08]),
+                           size=0.08, rgba=np.array([1.0, 1.0, 0.0, 1.0]))
             mjv.render()
-            time.sleep(0.05)
+
     except KeyboardInterrupt:
         pass
     finally:
