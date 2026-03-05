@@ -128,11 +128,13 @@ class PolyTrajOptimizer:
         self.sfc_corridors_data = list(hPolys_per_traj)
 
     def buildSFCCorridors(self, waypoints, search_radius: float = 6.0,
-                          subsample: int = 2, n_bins: int = 36) -> list:
+                          subsample: int = 2, n_bins: int = 36,
+                          method: str = 'cube',
+                          inflate_step_cells: int = 1) -> list:
         """从已设置的 grid_map 生成 SFC 走廊并自动注入到优化器。
 
         委托给 minco_obstacle.build_sfc_from_gridmap 一步完成：
-            1. 从 GridMap2D 提取障碍物点云
+            1. 按 method 选择走廊生成器（默认 cube 膨胀法）
             2. 为每段路径生成凸 hPoly 走廊
             3. 自动调用 setSFCCorridors
 
@@ -140,8 +142,10 @@ class PolyTrajOptimizer:
         ----
         waypoints     : np.ndarray shape (N, 2)，包含首尾的完整路点
         search_radius : 走廊搜索半径（米），默认 6.0
-        subsample     : 点云下采样步长，默认 2
-        n_bins        : 角度分箱数，默认 36
+        subsample     : legacy 方法下点云下采样步长，默认 2
+        n_bins        : legacy 方法下角度分箱数，默认 36
+        method        : 'cube'（默认，栅格膨胀）或 'legacy'（点云分箱）
+        inflate_step_cells : cube 方法每轮每方向膨胀的格数，默认 1
 
         返回
         ----
@@ -159,8 +163,10 @@ class PolyTrajOptimizer:
             search_radius=search_radius,
             subsample=subsample,
             n_bins=n_bins,
+            method=method,
+            inflate_step_cells=inflate_step_cells,
         )
-        print(f"[SFC] Built {len(hPolys)} corridor segments in "
+        print(f"[SFC] Built {len(hPolys)} corridor segments by '{method}' in "
               f"{(_time.time()-t0)*1000:.1f} ms")
 
         self.setSFCCorridors([hPolys])

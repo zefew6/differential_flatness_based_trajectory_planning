@@ -7,7 +7,8 @@ minco_obstacle — 障碍物约束与 ESDF 地图模块
 - GridMap2D              : 继承自 GridMap，增加 ESDF 构建与连续距离/梯度查询；
                            重写 _add_box / _add_sphere / _add_cylinder 以支持 origin 偏移。
 - SFCObstacleConstraint  : 基于安全飞行走廊（凸多面体半平面）的静态障碍物约束。
-- build_corridors        : 为轨迹路点序列批量生成 SFC 走廊（模块级工具函数）。
+- build_corridors        : 角度分箱点云法（legacy）批量生成 SFC 走廊。
+- build_corridors_inflated_cubes : 栅格种子框+四向膨胀（Dftpav 风格）生成 SFC 走廊。
 - extract_obs_points_from_gridmap : 从 GridMap2D 提取占据栅格的世界坐标点云。
 """
 import numpy as np
@@ -840,6 +841,136 @@ def _map_bounds_to_hpoly(map_bounds, center, fallback_radius=5.0):
     ]
 
 
+def _idx_in_range(row: int, col: int, ny: int, nx: int) -> bool:
+    return 0 <= row < ny and 0 <= col < nx
+
+
+def _rect_is_free(occ: np.ndarray, r0: int, r1: int, c0: int, c1: int) -> bool:
+    if r0 > r1 or c0 > c1:
+        return False
+    return not np.any(occ[r0:r1 + 1, c0:c1 + 1] > 0)
+
+
+def _find_nearest_free_cell(occ: np.ndarray, r: int, c: int, max_radius: int = 8):
+    ny, nx = occ.shape
+    if _idx_in_range(r, c, ny, nx) and occ[r, c] <= 0:
+        return r, c
+
+    for rad in range(1, max_radius + 1):
+        rr0 = max(0, r - rad)
+        rr1 = min(ny - 1, r + rad)
+        cc0 = max(0, c - rad)
+        cc1 = min(nx - 1, c + rad)
+
+        # 只扫 ring，避免重复遍历
+        for cc in range(cc0, cc1 + 1):
+            for rr in (rr0, rr1):
+                if occ[rr, cc] <= 0:
+                    return rr, cc
+        for rr in range(rr0 + 1, rr1):
+            for cc in (cc0, cc1):
+                if occ[rr, cc] <= 0:
+                    return rr, cc
+
+    return None
+
+
+def _inflate_rect_4dirs(occ: np.ndarray,
+                        r0: int, r1: int, c0: int, c1: int,
+                        max_expand_cells: int,
+                        inflate_step_cells: int = 1):
+    """在占据栅格上做四向轴对齐膨胀（近似 Dftpav 的 cube inflation 思路）。"""
+    ny, nx = occ.shape
+    up_done = down_done = left_done = right_done = False
+    expanded = 0
+
+    while not (up_done and down_done and left_done and right_done):
+        if expanded >= max_expand_cells:
+            break
+
+        # +row 方向（up）
+        if not up_done:
+            grew = False
+            for _ in range(inflate_step_cells):
+                nr1 = r1 + 1
+                if nr1 >= ny or np.any(occ[nr1, c0:c1 + 1] > 0):
+                    up_done = True
+                    break
+                r1 = nr1
+                expanded += 1
+                grew = True
+                if expanded >= max_expand_cells:
+                    break
+            if not grew and not up_done:
+                up_done = True
+
+        # -row 方向（down）
+        if not down_done:
+            grew = False
+            for _ in range(inflate_step_cells):
+                nr0 = r0 - 1
+                if nr0 < 0 or np.any(occ[nr0, c0:c1 + 1] > 0):
+                    down_done = True
+                    break
+                r0 = nr0
+                expanded += 1
+                grew = True
+                if expanded >= max_expand_cells:
+                    break
+            if not grew and not down_done:
+                down_done = True
+
+        # +col 方向（right）
+        if not right_done:
+            grew = False
+            for _ in range(inflate_step_cells):
+                nc1 = c1 + 1
+                if nc1 >= nx or np.any(occ[r0:r1 + 1, nc1] > 0):
+                    right_done = True
+                    break
+                c1 = nc1
+                expanded += 1
+                grew = True
+                if expanded >= max_expand_cells:
+                    break
+            if not grew and not right_done:
+                right_done = True
+
+        # -col 方向（left）
+        if not left_done:
+            grew = False
+            for _ in range(inflate_step_cells):
+                nc0 = c0 - 1
+                if nc0 < 0 or np.any(occ[r0:r1 + 1, nc0] > 0):
+                    left_done = True
+                    break
+                c0 = nc0
+                expanded += 1
+                grew = True
+                if expanded >= max_expand_cells:
+                    break
+            if not grew and not left_done:
+                left_done = True
+
+    return r0, r1, c0, c1
+
+
+def _rect_idx_to_hpoly(grid_map, r0: int, r1: int, c0: int, c1: int):
+    """将占据栅格中的轴对齐矩形转换为半平面 n^T p <= b。"""
+    res = float(grid_map.resolution)
+    xmin = float(grid_map.origin_x + c0 * res)
+    xmax = float(grid_map.origin_x + (c1 + 1) * res)
+    ymin = float(grid_map.origin_y + r0 * res)
+    ymax = float(grid_map.origin_y + (r1 + 1) * res)
+
+    return np.array([
+        [1.0, 0.0, xmax],
+        [-1.0, 0.0, -xmin],
+        [0.0, 1.0, ymax],
+        [0.0, -1.0, -ymin],
+    ], dtype=np.float64)
+
+
 def build_corridor_for_segment(p0, p1, obs_pts,
                                 search_radius=6.0, n_bins=_N_BINS,
                                 map_bounds=None):
@@ -900,6 +1031,65 @@ def build_corridors(waypoints, obs_pts,
     ]
 
 
+def build_corridors_inflated_cubes(grid_map, waypoints,
+                                   search_radius: float = 6.0,
+                                   inflate_step_cells: int = 1) -> list:
+    """Dftpav 风格：按段构造“种子框→四向膨胀”的轴对齐 corridor。"""
+    waypoints = np.asarray(waypoints, dtype=float)
+    piece_num = len(waypoints) - 1
+    if piece_num <= 0:
+        return []
+
+    occ = np.asarray(grid_map.occ)
+    ny, nx = occ.shape
+    res = max(1e-6, float(grid_map.resolution))
+    max_expand_cells = max(1, int(round(search_radius / res)))
+    hPolys = []
+
+    for i in range(piece_num):
+        p0 = waypoints[i]
+        p1 = waypoints[i + 1]
+        r0, c0 = grid_map.coor_to_index(p0)
+        r1, c1 = grid_map.coor_to_index(p1)
+
+        r0 = int(np.clip(r0, 0, ny - 1))
+        r1 = int(np.clip(r1, 0, ny - 1))
+        c0 = int(np.clip(c0, 0, nx - 1))
+        c1 = int(np.clip(c1, 0, nx - 1))
+
+        rl, ru = min(r0, r1), max(r0, r1)
+        cl, cu = min(c0, c1), max(c0, c1)
+
+        # 若初始种子框碰撞，退化到“中点附近最近自由格”作为起始 cube
+        if not _rect_is_free(occ, rl, ru, cl, cu):
+            mid = 0.5 * (p0 + p1)
+            mr, mc = grid_map.coor_to_index(mid)
+            mr = int(np.clip(mr, 0, ny - 1))
+            mc = int(np.clip(mc, 0, nx - 1))
+            free_idx = _find_nearest_free_cell(occ, mr, mc, max_radius=max(8, max_expand_cells // 2))
+            if free_idx is None:
+                center = mid
+                map_bounds = (float(grid_map.min_boundary[0]), float(grid_map.min_boundary[1]),
+                              float(grid_map.max_boundary[0]), float(grid_map.max_boundary[1]))
+                hPolys.append(np.array(_map_bounds_to_hpoly(map_bounds, center), dtype=np.float64))
+                continue
+            rl = ru = int(free_idx[0])
+            cl = cu = int(free_idx[1])
+
+        rl, ru, cl, cu = _inflate_rect_4dirs(
+            occ=occ,
+            r0=rl,
+            r1=ru,
+            c0=cl,
+            c1=cu,
+            max_expand_cells=max_expand_cells,
+            inflate_step_cells=max(1, int(inflate_step_cells)),
+        )
+        hPolys.append(_rect_idx_to_hpoly(grid_map, rl, ru, cl, cu))
+
+    return hPolys
+
+
 def extract_obs_points_from_gridmap(grid_map, subsample=1):
     """从 GridMap2D 提取占据栅格的世界坐标（障碍物点云）。"""
     occ = np.asarray(grid_map.occ)
@@ -917,26 +1107,23 @@ def extract_obs_points_from_gridmap(grid_map, subsample=1):
 def build_sfc_from_gridmap(grid_map, waypoints,
                             search_radius: float = 6.0,
                             subsample: int = 2,
-                            n_bins: int = 36) -> list:
-    """从 GridMap2D 一步生成完整 SFC 走廊（提取障碍点云 + 构建 hPoly）。
+                            n_bins: int = 36,
+                            method: str = 'cube',
+                            inflate_step_cells: int = 1) -> list:
+    """从 GridMap2D 一步生成 SFC 走廊。
 
-    等价于：
-        obs_pts  = extract_obs_points_from_gridmap(grid_map, subsample)
-        hPolys   = build_corridors(waypoints, obs_pts, ..., map_bounds=...)
-
-    参数
-    ----
-    grid_map      : GridMap2D 实例
-    waypoints     : np.ndarray shape (N, 2)，包含首尾的完整路点
-    search_radius : 走廊搜索半径（米），默认 6.0
-    subsample     : 障碍点云下采样步长，默认 2
-    n_bins        : 角度分箱数，默认 36
-
-    返回
-    ----
-    hPolys : list of np.ndarray，len = piece_num = len(waypoints)-1
-             每个元素 shape (K, 3)，行格式 [nx, ny, b]（n^T p ≤ b）
+    支持两种方法：
+    - method='cube'   : 栅格种子框+四向膨胀（更接近 Dftpav 的 cube inflation 思路，默认）
+    - method='legacy' : 点云+角度分箱半平面（旧版）
     """
+    if method == 'cube':
+        return build_corridors_inflated_cubes(
+            grid_map=grid_map,
+            waypoints=waypoints,
+            search_radius=search_radius,
+            inflate_step_cells=inflate_step_cells,
+        )
+
     obs_pts = extract_obs_points_from_gridmap(grid_map, subsample=subsample)
 
     map_bounds = None
