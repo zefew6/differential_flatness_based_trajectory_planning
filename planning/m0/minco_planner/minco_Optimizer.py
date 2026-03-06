@@ -55,8 +55,8 @@ class PolyTrajOptimizer:
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
         
         # 动力学约束参数 - 参考 Dftpav
-        self.max_vel = 2.0         # 最大速度 (m/s)
-        self.max_acc = 0.3         # 最大加速度 (m/s²)
+        self.max_vel = 4.0         # 最大速度 (m/s)
+        self.max_acc = 1.0         # 最大加速度 (m/s²)
         
         # L-BFGS 优化器参数
         self.lbfgs_memsize = 256   # 内存大小（Dftpav: 256）

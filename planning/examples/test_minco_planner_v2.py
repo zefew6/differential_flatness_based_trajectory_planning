@@ -215,6 +215,69 @@ def build_bamboo_xml(
 # ══════════════════════════════════════════════════════════════════
 #  工具
 # ══════════════════════════════════════════════════════════════════
+def uniform_resample_path(path: np.ndarray, max_seg_len: float = 3.0) -> np.ndarray:
+    """Dftpav 风格：在原始 A* 路径上等弧长均匀采样，一步替代 preprocessPath + resamplePath。
+
+    对应 Dftpav traj_manager.cpp L546-570：
+        piece_nums = max(int(totalDuration / timePerPiece + 0.5), 2)
+        ego_innerPs.col(i) = kino_path_finder_->evaluatePos(t).head(2)
+    区别仅在于此处以弧长代替时间作为参数化依据。
+    """
+    path = np.asarray(path, dtype=float)
+    seg_lens = np.linalg.norm(np.diff(path, axis=0), axis=1)
+    total_len = float(np.sum(seg_lens))
+    piece_nums = max(int(total_len / max_seg_len + 0.5), 2)
+
+    cum_dist = np.concatenate([[0.0], np.cumsum(seg_lens)])
+    sample_dists = np.linspace(0.0, total_len, piece_nums + 1)
+
+    result = []
+    for d in sample_dists:
+        idx = int(np.searchsorted(cum_dist, d, side='right')) - 1
+        idx = np.clip(idx, 0, len(path) - 2)
+        denom = cum_dist[idx + 1] - cum_dist[idx]
+        alpha = (d - cum_dist[idx]) / (denom + 1e-12)
+        result.append(path[idx] + alpha * (path[idx + 1] - path[idx]))
+    return np.array(result)
+
+
+def push_waypoints_to_clearance(waypoints: np.ndarray,
+                                grid_map,
+                                max_iters: int = 30,
+                                step_size: float = 0.08,
+                                target_clearance: float = 0.30) -> np.ndarray:
+    """将内点沿 ESDF 梯度方向推离障碍物，使其位于更宽阔的自由空间中心。
+
+    SFC 走廊质量完全取决于种子点位置：种子点越靠近竹子，走廊越窄，
+    5 阶多项式越难约束在其中。此函数在建走廊前让种子点「逃」到安全位置。
+
+    参数
+    ----
+    waypoints       : shape (N, 2)，含头尾
+    grid_map        : GridMap2D，提供 get_distance_and_gradient()
+    max_iters       : 最大推离迭代次数
+    step_size       : 每步推离距离（m）
+    target_clearance: 目标最小间隙（m），到达后停止推离
+
+    返回
+    ----
+    新的 waypoints，头尾不变，内点已推离
+    """
+    pts = waypoints.copy()
+    n_pts = len(pts)
+    for k in range(1, n_pts - 1):  # 只移动内点，头尾固定
+        for _ in range(max_iters):
+            dist, grad = grid_map.get_distance_and_gradient(pts[k])
+            if dist >= target_clearance:
+                break
+            # 梯度方向即远离最近障碍物的方向
+            gnorm = np.linalg.norm(grad)
+            if gnorm < 1e-8:
+                break
+            pts[k] += step_size * grad / gnorm
+    return pts
+
+
 def sample_traj_xy(minco_obj, n=800):
     t_total = float(np.sum(minco_obj.T))
     ts  = np.linspace(0.0, t_total, int(n))
@@ -253,7 +316,7 @@ def main():
     model = mujoco.MjModel.from_xml_string(xml_str)
     data  = mujoco.MjData(model)
     robot = Robot(model, data, robot_body_name="pusher1",
-                  actuator_names=["forward", "turn"], max_v=2.0, max_w=1.0)
+                  actuator_names=["forward", "turn"], max_v=4.0, max_w=2.0)
     mjv   = MujocoViewer(model, data)
     mjv.set_camera(distance=22.0, azimuth=0, elevation=-35, lookat=[0, 0, 0])
 
@@ -270,20 +333,37 @@ def main():
     if path is None:
         raise RuntimeError("A* 无法在竹林中找到路径，请换一个 seed 或减少 n_bamboo")
 
-    # ── 路径预处理 ────────────────────────────────────────────────────────
+    # ── 路径预处理（Dftpav 风格：等弧长均匀采样，一步完成）────────────────
+    # 对应 Dftpav traj_manager.cpp RunMINCOParking()：
+    #   piece_nums = max(int(totalDuration / timePerPiece + 0.5), 2)
+    #   ego_innerPs.col(i) = evaluatePos(t).head(2)
+    # 几何 A* 以弧长代替时间参数化，等价地在原始路径上等间隔采样。
     optimizer = PolyTrajOptimizer(obstacle_method=method)
     optimizer.setGridMap(grid_map)
 
-    pruned    = optimizer.preprocessPath(path)
-    resampled = optimizer.resamplePath(pruned, max_seg_len=3, dense_path=path)
+    resampled = uniform_resample_path(path, max_seg_len=1.2)
     inner_pts = resampled[1:-1]
     full_pts  = np.vstack([head_pos, inner_pts, tail_pos])
-    print(f"A* {len(path)} pts → pruned {len(pruned)} → resampled {len(resampled)}")
+    print(f"A* {len(path)} pts → uniform resampled {len(resampled)} pts (Dftpav style)")
 
     # ── SFC 走廊（仅 sfc 方法）──────────────────────────────────────────
     if method == "sfc":
-        optimizer.buildSFCCorridors(full_pts, search_radius=6.0, method='cube')
-        optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
+        # 先将内点推离障碍物：SFC 走廊质量由种子点位置决定，
+        # 种子点越靠近竹子，走廊越窄，5 阶多项式越难约束在其中。
+        full_pts_pushed = push_waypoints_to_clearance(
+            full_pts, grid_map,
+            max_iters=40,
+            step_size=0.06,
+            target_clearance=0.35,
+        )
+        n_moved = int(np.sum(
+            np.linalg.norm(full_pts_pushed[1:-1] - full_pts[1:-1], axis=1) > 1e-3
+        ))
+        print(f"[SFC] 推离内点: {n_moved}/{len(inner_pts)} 个点被推离障碍物")
+        optimizer.buildSFCCorridors(full_pts_pushed, search_radius=6.0, method='legacy')
+        optimizer.setParam(sfc_safe_margin=0.05, wei_sfc=1e5)
+        full_pts = full_pts_pushed
+        inner_pts = full_pts_pushed[1:-1]
 
     # ── MINCO 优化 ───────────────────────────────────────────────────────
     head_pva  = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
@@ -331,8 +411,8 @@ def main():
     # ── 跟踪控制器 ────────────────────────────────────────────────────────
     follower = TrajectoryFollower(
         opt_minco,
-        max_v=2.0, max_w=1.0,
-        kx=2.0, ky=2.0, ktheta=3.0,
+        max_v=4.0, max_w=2.0,
+        kx=10.0, ky=10.0, ktheta=10.0,
         proj_samples=40, proj_window=2.0,
         vd_min=0.6, a_brake=3.0, goal_tol=0.15,
     )
