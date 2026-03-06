@@ -484,6 +484,10 @@ class PolyTrajOptimizer:
         max_seg_len: float = 1.2,
         head_pva: np.ndarray = None,
         tail_pva: np.ndarray = None,
+        start_vel: np.ndarray = None,
+        start_acc: np.ndarray = None,
+        goal_vel: np.ndarray = None,
+        goal_acc: np.ndarray = None,
         sfc_push_to_clearance: bool = True,
         sfc_max_iters: int = 60,
         sfc_step_size: float = 0.05,
@@ -506,9 +510,18 @@ class PolyTrajOptimizer:
             raise RuntimeError("A* 无法找到可行路径")
 
         if head_pva is None:
-            head_pva = np.array([start_xy, [0.0, 0.0], [0.0, 0.0]])
+            start_vel = np.zeros(2, dtype=float) if start_vel is None else np.asarray(start_vel, dtype=float)
+            start_acc = np.zeros(2, dtype=float) if start_acc is None else np.asarray(start_acc, dtype=float)
+            head_pva = np.array([start_xy, start_vel, start_acc], dtype=float)
+        else:
+            head_pva = np.asarray(head_pva, dtype=float)
+
         if tail_pva is None:
-            tail_pva = np.array([goal_xy, [0.0, 0.0], [0.0, 0.0]])
+            goal_vel = np.zeros(2, dtype=float) if goal_vel is None else np.asarray(goal_vel, dtype=float)
+            goal_acc = np.zeros(2, dtype=float) if goal_acc is None else np.asarray(goal_acc, dtype=float)
+            tail_pva = np.array([goal_xy, goal_vel, goal_acc], dtype=float)
+        else:
+            tail_pva = np.asarray(tail_pva, dtype=float)
 
         t0 = _time.time()
         opt_minco, resampled = self.astar_path_to_follower_path(
