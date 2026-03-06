@@ -328,7 +328,7 @@ def main():
 
             if follower.done:
                 vel6  = robot.get_v()
-                v_now = np.hypot(vel6[3], vel6[4])
+                v_now = np.hypot(vel6[0], vel6[1])
                 if v_now > 0.08:
                     robot.set_ctrl(-np.clip(v_now * 2.0, 0.5, 2.0), 0.0)
                 else:

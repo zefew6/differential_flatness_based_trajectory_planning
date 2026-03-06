@@ -19,7 +19,6 @@ MINCO 轨迹规划 + 微分平坦跟踪控制 —— 在线重规划动态避障
 
 import os
 import sys
-import time
 import textwrap
 import numpy as np
 
@@ -55,14 +54,14 @@ def build_bamboo_xml(
     n_bamboo: int = 80,
     seed: int | None = None,
     field_half: float = 4.6,          # 竹林区域半宽（m）
-    r_min: float = 0.06,              # 竹竿最小半径
-    r_max: float = 0.15,              # 竹竿最大半径
+    r_min: float = 0.08,              # 竹竿最小半径
+    r_max: float = 0.40,              # 竹竿最大半径
     h_min: float = 0.22,              # 竹竿最小半高（MuJoCo cylinder half-height）
     h_max: float = 0.45,              # 竹竿最大半高
     clearance_start: float = 1.0,     # 起点净空半径
     clearance_end: float = 1.0,       # 终点净空半径
-    head_pos=(-4.5, 0.0),
-    tail_pos=(4.3, 0.0),
+    head_pos=(-4.5, -4.5),
+    tail_pos=(4.3, 4.3),
     max_attempts: int = 5000,         # 最大采样次数（防止死循环）
 ) -> str:
     """返回完整的 MuJoCo XML 字符串，内含随机竹林。"""
@@ -209,6 +208,7 @@ def build_bamboo_xml(
     """)
     return xml
 
+
 def sample_traj_xy(minco_obj, n=800):
     t_total = float(np.sum(minco_obj.T))
     ts  = np.linspace(0.0, t_total, int(n))
@@ -254,11 +254,6 @@ def pick_injection_point_on_path(pos_xy: np.ndarray,
         return cand.copy()
 
     return None
-# ── 可视化用轨迹数据 ─────────────────────────────────────────────────
-def to_xyz(pts_2d, z=0.06):
-    xyz = np.zeros((len(pts_2d), 3)) + z
-    xyz[:, :2] = pts_2d
-    return xyz
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -266,7 +261,7 @@ def to_xyz(pts_2d, z=0.06):
 # ══════════════════════════════════════════════════════════════════
 def main():
     seed = None
-    n_bam = 80
+    n_bam = 30
     rng = np.random.default_rng(seed)
     print(f"[MINCO planner v3 | online replan] method=esdf  n_bamboo={n_bam}  seed={seed}")
 
@@ -286,7 +281,7 @@ def main():
     robot = Robot(model, data, robot_body_name="pusher1",
                   actuator_names=["forward", "turn"], max_v=4.0, max_w=2.0)
     mjv   = MujocoViewer(model, data)
-    mjv.set_camera(distance=22.0, azimuth=0, elevation=-35, lookat=[0, 0, 0])
+    mjv.set_camera(distance=22.0, azimuth=0, elevation=-90, lookat=[0, 0, 0])
 
     # ── 地图 & 首次规划 ───────────────────────────────────────────────────
     grid_map = GridMap2D(
@@ -309,18 +304,25 @@ def main():
     opt_minco = initial_plan["minco"]
     print(f"首次规划完成：A* {len(path)} pts → resampled {len(resampled)} pts, MINCO {initial_plan['cost_time_ms']:.1f} ms")
 
+    # ── 可视化用轨迹数据 ─────────────────────────────────────────────────
+    def to_xyz(pts_2d, z=0.06):
+        xyz = np.zeros((len(pts_2d), 3)) + z
+        xyz[:, :2] = pts_2d
+        return xyz
+
     xyz_astar = to_xyz(path, z=0.04)
     xyz_resampled = to_xyz(resampled, z=0.06)
     xyz_opt = to_xyz(sample_traj_xy(opt_minco, n=1000), z=0.08)
 
     # ── 在线重规划配置 ───────────────────────────────────────────────────
-    replan_interval = 0.80
+    # 仅在地图变化后触发重规划；失败时做短暂重试节流
+    map_changed = False
     next_replan_time = 0.0
     injected_obstacles = []  # list[ndarray(2,)]
     next_inject_time = 2.0
     inject_interval = 2.2
     inject_jitter = 0.8
-    max_inject_count = 4
+    max_inject_count = 5
     injected_radius_min = 0.08
     injected_radius_max = 0.14
     injected_radii = []      # 每个障碍独立半径
@@ -343,12 +345,30 @@ def main():
     frame_skip = 5
     dt_ctrl    = model.opt.timestep * frame_skip
     sim_time = 0.0
+    prev_pos = robot.get_pos()[:2].copy()
+    stuck_time = 0.0
+    stuck_speed_thresh = 0.03   # m/s
+    stuck_timeout = 2.0         # s
 
     print("进入竹林仿真：将触发突发障碍并在线重规划。按 Ctrl-C 或关闭窗口退出。")
     try:
         while mjv.is_running():
             pos_xy = robot.get_pos()[:2]
             yaw    = robot.get_yaw()
+
+            # 0) 卡住检测：长期几乎不动则重启
+            moved = float(np.linalg.norm(pos_xy - prev_pos))
+            speed_proxy = moved / max(dt_ctrl, 1e-9)
+            if (not follower.done) and (speed_proxy < stuck_speed_thresh):
+                stuck_time += dt_ctrl
+            else:
+                stuck_time = 0.0
+            prev_pos = pos_xy.copy()
+
+            if stuck_time >= stuck_timeout:
+                print(f"[restart] 检测到卡住 {stuck_time:.2f}s，重启场景")
+                mjv.close()
+                os.execv(sys.executable, [sys.executable] + sys.argv)
 
             # 1) 多次障碍注入：每次都取当前规划轨迹上的点
             if (sim_time >= next_inject_time) and (len(injected_obstacles) < max_inject_count):
@@ -363,6 +383,7 @@ def main():
                     grid_map.add_circle_obstacle(cand, r_obs, update_esdf=True)
                     injected_obstacles.append(cand)
                     injected_radii.append(r_obs)
+                    map_changed = True
                     next_replan_time = sim_time
                     next_inject_time = sim_time + inject_interval + float(rng.uniform(-inject_jitter, inject_jitter))
                     next_inject_time = max(next_inject_time, sim_time + 0.6)
@@ -371,14 +392,19 @@ def main():
                     next_inject_time = sim_time + 0.5
                     print("[inject] 当前轨迹上暂无合适注入点，稍后重试")
 
-            # 2) 在线重规划：注入后按周期触发
-            if (len(injected_obstacles) > 0) and (not follower.done) and (sim_time >= next_replan_time):
+            # 2) 在线重规划：仅在地图变化后触发
+            if map_changed and (not follower.done) and (sim_time >= next_replan_time):
                 try:
+                    vel6 = robot.get_v()/30
+                    pos = robot.get_pos()
+                    robot_vel = vel6[0:2]
+                    robot_pos = pos[0:2]
                     replan = optimizer.online_replan_once(
                         grid_map=grid_map,
-                        start_xy=pos_xy.copy(),
+                        start_xy=robot_pos,
                         goal_xy=tail_pos,
                         max_seg_len=1.2,
+                        start_vel=robot_vel,
                     )
                     opt_minco = replan["minco"]
                     path = replan["path"]
@@ -388,7 +414,7 @@ def main():
                     follower = TrajectoryFollower(
                         opt_minco,
                         max_v=4.0, max_w=2.0,
-                        kx=10.0, ky=10.0, ktheta=10.0,
+                        kx=20.0, ky=20.0, ktheta=20.0,
                         proj_samples=40, proj_window=2.0,
                         vd_min=0.6, a_brake=3.0, goal_tol=0.15,
                     )
@@ -396,7 +422,7 @@ def main():
                     xyz_astar = to_xyz(path, z=0.04)
                     xyz_resampled = to_xyz(resampled, z=0.06)
                     xyz_opt = to_xyz(path_xy_for_inject, z=0.08)
-                    next_replan_time = sim_time + replan_interval
+                    map_changed = False
                     print(f"[replan] 在线重规划成功, 耗时={replan['cost_time_ms']:.1f}ms, path_pts={len(path)}")
                 except Exception as exc:
                     next_replan_time = sim_time + 0.4
@@ -404,11 +430,14 @@ def main():
 
             if follower.done:
                 vel6  = robot.get_v()
-                v_now = np.hypot(vel6[3], vel6[4])
+                v_now = np.hypot(vel6[0], vel6[1])
                 if v_now > 0.08:
                     robot.set_ctrl(-np.clip(v_now * 2.0, 0.5, 2.0), 0.0)
                 else:
                     robot.set_ctrl(0.0, 0.0)
+                    print("[restart] 到达终点并停稳，重启场景")
+                    mjv.close()
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
             else:
                 v, w = follower.step(pos_xy, yaw, dt_ctrl)
                 robot.set_ctrl(v, w)

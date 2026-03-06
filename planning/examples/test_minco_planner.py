@@ -132,9 +132,9 @@ def main():
             yaw    = robot.get_yaw()
 
             if follower.done:
-                # 主动制动：data.cvel 格式 [ωx,ωy,ωz, vx,vy,vz]，取 [3:5] 为线速度
+                # 主动制动：Robot.get_v() 返回 [vx, vy, vz, wx, wy, wz]
                 vel6  = robot.get_v()
-                v_now = np.hypot(vel6[3], vel6[4])
+                v_now = np.hypot(vel6[0], vel6[1])
                 if v_now > 0.08:
                     robot.set_ctrl(-np.clip(v_now * 2.0, 0.5, 2.0), 0.0)
                 else:
