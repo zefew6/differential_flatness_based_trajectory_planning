@@ -61,7 +61,7 @@ class PolyTrajOptimizer:
         # L-BFGS 优化器参数
         self.lbfgs_memsize = 256   # 内存大小（Dftpav: 256）
         self.lbfgs_past = 3        # 过去迭代数（Dftpav: 3）
-        self.lbfgs_delta = 1e-2    # 收敛判据（函数值相对变化）
+        self.lbfgs_delta = 2e-2    # 收敛判据（函数值相对变化）
         self.lbfgs_g_epsilon = 1e-4  # 梯度收敛判据（投影梯度范数）
         self.lbfgs_max_iterations = 200  # 最大 L-BFGS 迭代次数（控制 nit）
         self.lbfgs_max_fun = 15000        # 最大函数求值次数（真正的时间上限，控制 nfev）
@@ -306,6 +306,233 @@ class PolyTrajOptimizer:
                     result.append(p0 + t * (p1 - p0))
             result.append(p1)
         return np.array(result)
+
+    def uniform_resample_path(self, path: np.ndarray,
+                              max_seg_len: float = 3.0) -> np.ndarray:
+        """Dftpav 风格：在原始 A* 路径上按等弧长均匀采样。
+
+        参数
+        ----
+        path : np.ndarray, shape (N, 2)
+            A* 输出路径。
+        max_seg_len : float
+            目标段长（米）。
+
+        返回
+        ----
+        resampled : np.ndarray, shape (M, 2)
+        """
+        path = np.asarray(path, dtype=float)
+        if len(path) < 2:
+            return path
+
+        seg_lens = np.linalg.norm(np.diff(path, axis=0), axis=1)
+        total_len = float(np.sum(seg_lens))
+        piece_nums = max(int(total_len / max_seg_len + 0.5), 2)
+
+        cum_dist = np.concatenate([[0.0], np.cumsum(seg_lens)])
+        sample_dists = np.linspace(0.0, total_len, piece_nums + 1)
+
+        result = []
+        for d in sample_dists:
+            idx = int(np.searchsorted(cum_dist, d, side='right')) - 1
+            idx = np.clip(idx, 0, len(path) - 2)
+            denom = cum_dist[idx + 1] - cum_dist[idx]
+            alpha = (d - cum_dist[idx]) / (denom + 1e-12)
+            result.append(path[idx] + alpha * (path[idx + 1] - path[idx]))
+        return np.array(result)
+
+    def push_waypoints_to_clearance(self,
+                                    waypoints: np.ndarray,
+                                    max_iters: int = 30,
+                                    step_size: float = 0.08,
+                                    target_clearance: float = 0.30) -> np.ndarray:
+        """将内点沿 ESDF 梯度方向推离障碍物（头尾不动）。"""
+        if self.grid_map is None:
+            raise RuntimeError("Call setGridMap() before push_waypoints_to_clearance().")
+
+        pts = np.asarray(waypoints, dtype=float).copy()
+        n_pts = len(pts)
+        for k in range(1, n_pts - 1):
+            for _ in range(max_iters):
+                dist, grad = self.grid_map.get_distance_and_gradient(pts[k])
+                if dist >= target_clearance:
+                    break
+                gnorm = np.linalg.norm(grad)
+                if gnorm < 1e-8:
+                    break
+                pts[k] += step_size * grad / gnorm
+        return pts
+
+    def astar_path_to_follower_path(
+        self,
+        astar_path: np.ndarray,
+        head_pva: np.ndarray = None,
+        tail_pva: np.ndarray = None,
+        max_seg_len: float = 1.2,
+        waypoints: np.ndarray = None,
+        sfc_push_to_clearance: bool = True,
+        sfc_max_iters: int = 60,
+        sfc_step_size: float = 0.05,
+        sfc_target_clearance: float = 0.40,
+        sfc_search_radius: float = 6.0,
+        sfc_build_method: str = 'legacy',
+        sfc_safe_margin: float = 0.0,
+        sfc_wei: float = 5e5,
+    ):
+        """输入 A* path，输出可供 TrajectoryFollower 跟踪的 MINCO 轨迹。
+
+        参数
+        ----
+        astar_path : np.ndarray, shape (N, 2)
+            A* 输出路径。
+        head_pva : np.ndarray, optional
+            起点状态，shape (3,2)。不提供则使用 astar_path 首点、零速零加。
+        tail_pva : np.ndarray, optional
+            终点状态，shape (3,2)。不提供则使用 astar_path 末点、零速零加。
+        max_seg_len : float
+            等弧长重采样段长（米）。
+        waypoints : np.ndarray, optional
+            若提供，则直接作为优化路点（含首尾）；否则使用重采样结果。
+        sfc_push_to_clearance : bool
+            当 obstacle_method='sfc' 时，是否在建走廊前推离内点。
+        sfc_max_iters, sfc_step_size, sfc_target_clearance
+            SFC 推离参数。
+        sfc_search_radius, sfc_build_method
+            SFC 走廊构建参数，传给 buildSFCCorridors。
+        sfc_safe_margin, sfc_wei
+            SFC 约束参数，传给 setParam。
+
+        返回
+        ----
+        opt_minco : MINCO
+            可直接传入 TrajectoryFollower 的轨迹对象。
+        resampled : np.ndarray
+            等弧长重采样后的路径（含首尾）。
+        """
+        from .minco import MINCO
+
+        astar_path = np.asarray(astar_path, dtype=float)
+        if len(astar_path) < 2:
+            raise ValueError("astar_path 至少需要 2 个点")
+
+        resampled = self.uniform_resample_path(astar_path, max_seg_len=max_seg_len)
+
+        if waypoints is None:
+            full_pts = resampled
+        else:
+            full_pts = np.asarray(waypoints, dtype=float)
+            if len(full_pts) < 2:
+                raise ValueError("waypoints 至少需要 2 个点")
+
+        if self.obstacle_method == 'sfc':
+            if self.grid_map is None:
+                raise RuntimeError("SFC 模式需要先调用 setGridMap()。")
+
+            if sfc_push_to_clearance:
+                full_pts = self.push_waypoints_to_clearance(
+                    full_pts,
+                    max_iters=sfc_max_iters,
+                    step_size=sfc_step_size,
+                    target_clearance=sfc_target_clearance,
+                )
+
+            self.buildSFCCorridors(
+                full_pts,
+                search_radius=sfc_search_radius,
+                method=sfc_build_method,
+            )
+            self.setParam(sfc_safe_margin=sfc_safe_margin, wei_sfc=sfc_wei)
+
+        if head_pva is None:
+            head_pva = np.array([full_pts[0], [0.0, 0.0], [0.0, 0.0]], dtype=float)
+        else:
+            head_pva = np.asarray(head_pva, dtype=float)
+
+        if tail_pva is None:
+            tail_pva = np.array([full_pts[-1], [0.0, 0.0], [0.0, 0.0]], dtype=float)
+        else:
+            tail_pva = np.asarray(tail_pva, dtype=float)
+
+        inner_pts = full_pts[1:-1]
+        durations = self.allocateTime(full_pts)
+
+        self.OptimizeTrajectory(
+            iniStates=[head_pva], finStates=[tail_pva],
+            initInnerPts=[inner_pts],
+            initTs=np.array([np.sum(durations)]),
+            initSegTs=[durations],
+        )
+
+        opt_traj = self.getOptimizedTrajectories()[0]
+        opt_coeffs = opt_traj.getCoeffs()
+        opt_T = opt_traj.T
+        wpts = []
+        for i in range(len(opt_T) - 1):
+            c = opt_coeffs[6 * i:6 * (i + 1), :]
+            Ti = opt_T[i]
+            wpts.append(c[0] + c[1] * Ti + c[2] * Ti ** 2 + c[3] * Ti ** 3 + c[4] * Ti ** 4 + c[5] * Ti ** 5)
+
+        opt_minco = MINCO(head_pva, tail_pva, np.array(wpts), opt_T)
+        return opt_minco, resampled
+
+    def online_replan_once(
+        self,
+        grid_map,
+        start_xy: np.ndarray,
+        goal_xy: np.ndarray,
+        max_seg_len: float = 1.2,
+        head_pva: np.ndarray = None,
+        tail_pva: np.ndarray = None,
+        sfc_push_to_clearance: bool = True,
+        sfc_max_iters: int = 60,
+        sfc_step_size: float = 0.05,
+        sfc_target_clearance: float = 0.40,
+        sfc_search_radius: float = 6.0,
+        sfc_build_method: str = 'legacy',
+        sfc_safe_margin: float = 0.0,
+        sfc_wei: float = 5e5,
+    ) -> dict:
+        """单次在线重规划：A* -> MINCO，返回可直接用于跟踪/可视化的结果。"""
+        from ..planning.a_star import graph_search
+        import time as _time
+
+        start_xy = np.asarray(start_xy, dtype=float)
+        goal_xy = np.asarray(goal_xy, dtype=float)
+        self.setGridMap(grid_map)
+
+        path = graph_search(start=start_xy, goal=goal_xy, gridmap=grid_map)
+        if path is None or len(path) < 2:
+            raise RuntimeError("A* 无法找到可行路径")
+
+        if head_pva is None:
+            head_pva = np.array([start_xy, [0.0, 0.0], [0.0, 0.0]])
+        if tail_pva is None:
+            tail_pva = np.array([goal_xy, [0.0, 0.0], [0.0, 0.0]])
+
+        t0 = _time.time()
+        opt_minco, resampled = self.astar_path_to_follower_path(
+            path,
+            head_pva=head_pva,
+            tail_pva=tail_pva,
+            max_seg_len=max_seg_len,
+            sfc_push_to_clearance=sfc_push_to_clearance,
+            sfc_max_iters=sfc_max_iters,
+            sfc_step_size=sfc_step_size,
+            sfc_target_clearance=sfc_target_clearance,
+            sfc_search_radius=sfc_search_radius,
+            sfc_build_method=sfc_build_method,
+            sfc_safe_margin=sfc_safe_margin,
+            sfc_wei=sfc_wei,
+        )
+        dt_ms = (_time.time() - t0) * 1000.0
+
+        return {
+            "path": path,
+            "resampled": resampled,
+            "minco": opt_minco,
+            "cost_time_ms": dt_ms,
+        }
 
     # ------------------------------------------------------------------
     # 时间分配：梯形速度曲线  （参考 ST-opt-tools AStar::evaluateDuration）

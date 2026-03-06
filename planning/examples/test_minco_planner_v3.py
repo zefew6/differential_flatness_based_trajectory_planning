@@ -1,23 +1,22 @@
 """
-MINCO 轨迹规划 + 微分平坦跟踪控制 —— 随机竹林场景（v2）
+MINCO 轨迹规划 + 微分平坦跟踪控制 —— 在线重规划动态避障测试（v3）
 
 每次运行竹林都完全随机生成（位置 + 半径 + 高度），
-起点在竹林西侧 (-4.5, 0.0)，终点在竹林东侧 (4.3, 0.0)。
+起点在竹林西侧，终点在竹林东侧。
+
+测试逻辑
+--------
+1) 先在随机竹林中做一次 A* + MINCO 初始规划并跟踪。
+2) 机器人运动过程中，在当前参考路径前方“突然”注入一个圆柱障碍物
+   （尺寸与竹子半径/高度同量级）。
+3) 更新栅格地图 ESDF，并触发在线重规划（A* + MINCO），观察绕障效果。
 
 用法
 ----
     source /home/hac/Differential_Flatness/MAS/MINCO/bin/activate
-    # ESDF 方法（默认，每次随机）
-    python examples/test_minco_planner_v2.py
-    # SFC 凸走廊方法
-    python examples/test_minco_planner_v2.py --method sfc
-    # 固定随机种子（可复现）
-    python examples/test_minco_planner_v2.py --seed 42
-    # 指定竹子数量（默认 80）
-    python examples/test_minco_planner_v2.py --n_bamboo 60
+    python examples/test_minco_planner_v3.py
 """
 
-import argparse
 import os
 import sys
 import time
@@ -35,7 +34,6 @@ if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
 from m0.minco_planner import PolyTrajOptimizer
-from m0.planning.a_star import graph_search
 from m0.minco_planner.minco_obstacle import GridMap2D
 from m0.viewer.mujoco_visualization import MujocoViewer
 from m0.robot.robot import Robot
@@ -211,7 +209,6 @@ def build_bamboo_xml(
     """)
     return xml
 
-
 def sample_traj_xy(minco_obj, n=800):
     t_total = float(np.sum(minco_obj.T))
     ts  = np.linspace(0.0, t_total, int(n))
@@ -219,22 +216,59 @@ def sample_traj_xy(minco_obj, n=800):
     return pts
 
 
+def build_circle_polyline(center_xy: np.ndarray, radius: float, n: int = 72, z: float = 0.08):
+    ang = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    pts = np.zeros((n + 1, 3), dtype=float)
+    pts[:-1, 0] = center_xy[0] + radius * np.cos(ang)
+    pts[:-1, 1] = center_xy[1] + radius * np.sin(ang)
+    pts[:-1, 2] = z
+    pts[-1] = pts[0]
+    return pts
+
+
+def pick_injection_point_on_path(pos_xy: np.ndarray,
+                                 goal_xy: np.ndarray,
+                                 path_xy: np.ndarray,
+                                 existing_centers: list,
+                                 min_robot_dist: float = 1.0,
+                                 min_goal_dist: float = 1.0,
+                                 min_obs_spacing: float = 0.8):
+    """从当前规划轨迹上选一个注入点（严格在 path_xy 上）。"""
+    if path_xy is None or len(path_xy) < 20:
+        return None
+
+    d_robot = np.linalg.norm(path_xy - pos_xy[None, :], axis=1)
+    near_idx = int(np.argmin(d_robot))
+
+    start_idx = min(len(path_xy) - 1, near_idx + 35)  # 沿轨迹前方挑点
+    end_idx = max(start_idx + 1, len(path_xy) - 15)   # 尾部留出终点缓冲
+
+    for idx in range(start_idx, end_idx, 8):
+        cand = path_xy[idx]
+        if np.linalg.norm(cand - pos_xy) < min_robot_dist:
+            continue
+        if np.linalg.norm(cand - goal_xy) < min_goal_dist:
+            continue
+        if any(np.linalg.norm(cand - c) < min_obs_spacing for c in existing_centers):
+            continue
+        return cand.copy()
+
+    return None
+# ── 可视化用轨迹数据 ─────────────────────────────────────────────────
+def to_xyz(pts_2d, z=0.06):
+    xyz = np.zeros((len(pts_2d), 3)) + z
+    xyz[:, :2] = pts_2d
+    return xyz
+
+
 # ══════════════════════════════════════════════════════════════════
 #  主函数
 # ══════════════════════════════════════════════════════════════════
 def main():
-    parser = argparse.ArgumentParser(description="MINCO 规划随机竹林场景 (v2)")
-    parser.add_argument("--method",   choices=["esdf", "sfc"], default="esdf",
-                        help="障碍物方法：esdf 或 sfc")
-    parser.add_argument("--seed",     type=int, default=None,
-                        help="随机种子（不指定则每次不同）")
-    parser.add_argument("--n_bamboo", type=int, default=80,
-                        help="竹子数量（默认 80）")
-    args   = parser.parse_args()
-    method = args.method
-    seed   = args.seed
-    n_bam  = args.n_bamboo
-    print(f"[MINCO planner v2 | bamboo scene] method={method}  n_bamboo={n_bam}  seed={seed}")
+    seed = None
+    n_bam = 80
+    rng = np.random.default_rng(seed)
+    print(f"[MINCO planner v3 | online replan] method=esdf  n_bamboo={n_bam}  seed={seed}")
 
     # ── 起终点（西侧 → 东侧，穿越整片竹林）──────────────────────────────
     head_pos = np.array([-4.5,  -4.5])   # 西侧中央，竹林入口
@@ -254,7 +288,7 @@ def main():
     mjv   = MujocoViewer(model, data)
     mjv.set_camera(distance=22.0, azimuth=0, elevation=-35, lookat=[0, 0, 0])
 
-    # ── 地图 & A* ────────────────────────────────────────────────────────
+    # ── 地图 & 首次规划 ───────────────────────────────────────────────────
     grid_map = GridMap2D(
         model=model, data=data,
         resolution=0.05,
@@ -263,45 +297,34 @@ def main():
         margin=0.1,
         origin_x=-5.0, origin_y=-5.0,
     )
-    path = graph_search(start=head_pos, goal=tail_pos, gridmap=grid_map)
-    if path is None:
-        raise RuntimeError("A* 无法在竹林中找到路径，请换一个 seed 或减少 n_bamboo")
-
-    # ── 路径预处理（Dftpav 风格：等弧长均匀采样，一步完成）────────────────
-    # 对应 Dftpav traj_manager.cpp RunMINCOParking()：
-    #   piece_nums = max(int(totalDuration / timePerPiece + 0.5), 2)
-    #   ego_innerPs.col(i) = evaluatePos(t).head(2)
-    # 几何 A* 以弧长代替时间参数化，等价地在原始路径上等间隔采样。
-    optimizer = PolyTrajOptimizer(obstacle_method=method)
-    optimizer.setGridMap(grid_map)
-
-    # max_seg_len 控制分段数（直接影响轨迹质量）：
-    #   1.2m → ~12段（高质量，推荐）
-    #   2.5m → ~6段 （快速，但密集障碍场景容易撞）
-
-    # ── MINCO 优化 ───────────────────────────────────────────────────────
-    head_pva  = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
-    tail_pva  = np.array([tail_pos, [0.0, 0.0], [0.0, 0.0]])
-    t0 = time.time()
-    print("MINCO 竹林轨迹优化中…")
-    opt_minco, resampled = optimizer.astar_path_to_follower_path(
-        path,
-        head_pva=head_pva,
-        tail_pva=tail_pva,
+    optimizer = PolyTrajOptimizer(obstacle_method="esdf")
+    initial_plan = optimizer.online_replan_once(
+        grid_map=grid_map,
+        start_xy=head_pos,
+        goal_xy=tail_pos,
         max_seg_len=1.2,
     )
-    print(f"A* {len(path)} pts → uniform resampled {len(resampled)} pts (Dftpav style)")
-    print(f"优化完成，耗时 {(time.time()-t0)*1000:.2f}ms")
+    path = initial_plan["path"]
+    resampled = initial_plan["resampled"]
+    opt_minco = initial_plan["minco"]
+    print(f"首次规划完成：A* {len(path)} pts → resampled {len(resampled)} pts, MINCO {initial_plan['cost_time_ms']:.1f} ms")
 
-    # ── 可视化用轨迹数据 ─────────────────────────────────────────────────
-    def to_xyz(pts_2d, z=0.06):
-        xyz = np.zeros((len(pts_2d), 3)) + z
-        xyz[:, :2] = pts_2d
-        return xyz
-
-    xyz_astar     = to_xyz(path,      z=0.04)
+    xyz_astar = to_xyz(path, z=0.04)
     xyz_resampled = to_xyz(resampled, z=0.06)
-    xyz_opt       = to_xyz(sample_traj_xy(opt_minco, n=1000), z=0.08)
+    xyz_opt = to_xyz(sample_traj_xy(opt_minco, n=1000), z=0.08)
+
+    # ── 在线重规划配置 ───────────────────────────────────────────────────
+    replan_interval = 0.80
+    next_replan_time = 0.0
+    injected_obstacles = []  # list[ndarray(2,)]
+    next_inject_time = 2.0
+    inject_interval = 2.2
+    inject_jitter = 0.8
+    max_inject_count = 4
+    injected_radius_min = 0.08
+    injected_radius_max = 0.14
+    injected_radii = []      # 每个障碍独立半径
+    path_xy_for_inject = sample_traj_xy(opt_minco, n=1000)
 
     # ── 机器人初始化 ──────────────────────────────────────────────────────
     _, first_vel, _ = opt_minco.eval(0.05)
@@ -319,12 +342,65 @@ def main():
     )
     frame_skip = 5
     dt_ctrl    = model.opt.timestep * frame_skip
+    sim_time = 0.0
 
-    print("进入竹林仿真，按 Ctrl-C 或关闭窗口退出。")
+    print("进入竹林仿真：将触发突发障碍并在线重规划。按 Ctrl-C 或关闭窗口退出。")
     try:
         while mjv.is_running():
             pos_xy = robot.get_pos()[:2]
             yaw    = robot.get_yaw()
+
+            # 1) 多次障碍注入：每次都取当前规划轨迹上的点
+            if (sim_time >= next_inject_time) and (len(injected_obstacles) < max_inject_count):
+                cand = pick_injection_point_on_path(
+                    pos_xy=pos_xy,
+                    goal_xy=tail_pos,
+                    path_xy=path_xy_for_inject,
+                    existing_centers=injected_obstacles,
+                )
+                if cand is not None:
+                    r_obs = float(rng.uniform(injected_radius_min, injected_radius_max))
+                    grid_map.add_circle_obstacle(cand, r_obs, update_esdf=True)
+                    injected_obstacles.append(cand)
+                    injected_radii.append(r_obs)
+                    next_replan_time = sim_time
+                    next_inject_time = sim_time + inject_interval + float(rng.uniform(-inject_jitter, inject_jitter))
+                    next_inject_time = max(next_inject_time, sim_time + 0.6)
+                    print(f"[inject {len(injected_obstacles)}/{max_inject_count}] 路径上添加障碍: center={cand}, r={r_obs:.2f}, next_in={next_inject_time-sim_time:.2f}s")
+                else:
+                    next_inject_time = sim_time + 0.5
+                    print("[inject] 当前轨迹上暂无合适注入点，稍后重试")
+
+            # 2) 在线重规划：注入后按周期触发
+            if (len(injected_obstacles) > 0) and (not follower.done) and (sim_time >= next_replan_time):
+                try:
+                    replan = optimizer.online_replan_once(
+                        grid_map=grid_map,
+                        start_xy=pos_xy.copy(),
+                        goal_xy=tail_pos,
+                        max_seg_len=1.2,
+                    )
+                    opt_minco = replan["minco"]
+                    path = replan["path"]
+                    resampled = replan["resampled"]
+                    path_xy_for_inject = sample_traj_xy(opt_minco, n=1000)
+
+                    follower = TrajectoryFollower(
+                        opt_minco,
+                        max_v=4.0, max_w=2.0,
+                        kx=10.0, ky=10.0, ktheta=10.0,
+                        proj_samples=40, proj_window=2.0,
+                        vd_min=0.6, a_brake=3.0, goal_tol=0.15,
+                    )
+
+                    xyz_astar = to_xyz(path, z=0.04)
+                    xyz_resampled = to_xyz(resampled, z=0.06)
+                    xyz_opt = to_xyz(path_xy_for_inject, z=0.08)
+                    next_replan_time = sim_time + replan_interval
+                    print(f"[replan] 在线重规划成功, 耗时={replan['cost_time_ms']:.1f}ms, path_pts={len(path)}")
+                except Exception as exc:
+                    next_replan_time = sim_time + 0.4
+                    print(f"[replan] 失败，稍后重试: {exc}")
 
             if follower.done:
                 vel6  = robot.get_v()
@@ -339,6 +415,7 @@ def main():
 
             for _ in range(frame_skip):
                 mujoco.mj_step(model, data)
+            sim_time += dt_ctrl
 
             # 渲染
             try:
@@ -349,6 +426,10 @@ def main():
             mjv.draw_traj(xyz_astar,     size=0.02, rgba=np.array([1.0, 0.2, 0.2, 1.0]))
             mjv.draw_traj(xyz_resampled, size=0.04, rgba=np.array([1.0, 0.6, 0.0, 1.0]))
             mjv.draw_traj(xyz_opt,       size=0.03, rgba=np.array([0.0, 1.0, 0.5, 1.0]))
+
+            for center, radius in zip(injected_obstacles, injected_radii):
+                cyl_ring = build_circle_polyline(center, radius, n=72, z=0.10)
+                mjv.draw_traj(cyl_ring, size=0.02, rgba=np.array([1.0, 0.1, 0.1, 1.0]))
 
             if len(follower.trail) > 1:
                 trail = np.array(follower.trail)

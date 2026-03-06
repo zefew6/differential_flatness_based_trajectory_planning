@@ -26,7 +26,7 @@ planning_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
-from m0.minco_planner import MINCO, PolyTrajOptimizer
+from m0.minco_planner import PolyTrajOptimizer
 from m0.planning.a_star import graph_search
 from m0.minco_planner.minco_obstacle import GridMap2D
 from m0.viewer.mujoco_visualization import MujocoViewer
@@ -79,36 +79,24 @@ def main():
     full_pts  = np.vstack([head_pos, inner_pts, tail_pos])
     print(f"A* {len(path)} pts → pruned {len(pruned)} → resampled {len(resampled)}")
 
-    # ── SFC 走廊（仅 sfc 方法）──────────────────────────────────────────
-    if method == "sfc":
-        optimizer.buildSFCCorridors(full_pts, search_radius=6.0, method='cube')
-        optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
-
     # ── MINCO 优化 ───────────────────────────────────────────────────────
     head_pva  = np.array([head_pos, [0.0, 0.0], [0.0, 0.0]])
     tail_pva  = np.array([tail_pos, [0.0, 0.0], [0.0, 0.0]])
-    durations = optimizer.allocateTime(full_pts)
 
     t0 = time.time()
     print("MINCO 优化中…")
-    optimizer.OptimizeTrajectory(
-        iniStates=[head_pva], finStates=[tail_pva],
-        initInnerPts=[inner_pts],
-        initTs=np.array([np.sum(durations)]),
-        initSegTs=[durations],
+    opt_minco, _ = optimizer.astar_path_to_follower_path(
+        path,
+        head_pva=head_pva,
+        tail_pva=tail_pva,
+        max_seg_len=4.0,
+        waypoints=full_pts,
+        sfc_push_to_clearance=False,
+        sfc_build_method='cube',
+        sfc_safe_margin=0.0,
+        sfc_wei=1e5,
     )
     print(f"优化完成，耗时 {(time.time()-t0)*1000:.2f}ms")
-
-    # 重建 MINCO 对象（支持 eval() 接口）
-    opt_traj   = optimizer.getOptimizedTrajectories()[0]
-    opt_coeffs = opt_traj.getCoeffs()
-    opt_T      = opt_traj.T
-    wpts = []
-    for i in range(len(opt_T) - 1):
-        c = opt_coeffs[6*i:6*(i+1), :]
-        Ti = opt_T[i]
-        wpts.append(c[0] + c[1]*Ti + c[2]*Ti**2 + c[3]*Ti**3 + c[4]*Ti**4 + c[5]*Ti**5)
-    opt_minco = MINCO(head_pva, tail_pva, np.array(wpts), opt_T)
 
     # ── 可视化用轨迹数据 ─────────────────────────────────────────────────
     def to_xyz(pts_2d, z=0.03):
