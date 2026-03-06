@@ -341,6 +341,9 @@ def main():
     optimizer = PolyTrajOptimizer(obstacle_method=method)
     optimizer.setGridMap(grid_map)
 
+    # max_seg_len 控制分段数（直接影响轨迹质量）：
+    #   1.2m → ~12段（高质量，推荐）
+    #   2.5m → ~6段 （快速，但密集障碍场景容易撞）
     resampled = uniform_resample_path(path, max_seg_len=1.2)
     inner_pts = resampled[1:-1]
     full_pts  = np.vstack([head_pos, inner_pts, tail_pos])
@@ -352,16 +355,16 @@ def main():
         # 种子点越靠近竹子，走廊越窄，5 阶多项式越难约束在其中。
         full_pts_pushed = push_waypoints_to_clearance(
             full_pts, grid_map,
-            max_iters=40,
-            step_size=0.06,
-            target_clearance=0.35,
+            max_iters=60,
+            step_size=0.05,
+            target_clearance=0.40,
         )
         n_moved = int(np.sum(
             np.linalg.norm(full_pts_pushed[1:-1] - full_pts[1:-1], axis=1) > 1e-3
         ))
         print(f"[SFC] 推离内点: {n_moved}/{len(inner_pts)} 个点被推离障碍物")
         optimizer.buildSFCCorridors(full_pts_pushed, search_radius=6.0, method='legacy')
-        optimizer.setParam(sfc_safe_margin=0.05, wei_sfc=1e5)
+        optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=5e5)
         full_pts = full_pts_pushed
         inner_pts = full_pts_pushed[1:-1]
 

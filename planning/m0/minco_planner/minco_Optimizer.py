@@ -61,9 +61,10 @@ class PolyTrajOptimizer:
         # L-BFGS 优化器参数
         self.lbfgs_memsize = 256   # 内存大小（Dftpav: 256）
         self.lbfgs_past = 3        # 过去迭代数（Dftpav: 3）
-        self.lbfgs_delta = 1e-4    # 收敛判据（函数值相对变化）
+        self.lbfgs_delta = 1e-2    # 收敛判据（函数值相对变化）
         self.lbfgs_g_epsilon = 1e-4  # 梯度收敛判据（投影梯度范数）
-        self.lbfgs_max_iterations = 200  # 最大迭代次数
+        self.lbfgs_max_iterations = 200  # 最大 L-BFGS 迭代次数（控制 nit）
+        self.lbfgs_max_fun = 15000        # 最大函数求值次数（真正的时间上限，控制 nfev）
         
         # 轨迹分辨率
         self.traj_resolution = 16      # 轨迹段分辨率（Dftpav: 16）
@@ -342,24 +343,29 @@ class PolyTrajOptimizer:
             v_peak = np.sqrt(a * length)  # 三角形速度曲线
             return 2.0 * v_peak / a
 
-    def setParam(self, wei_time=None, wei_feas=None, mini_T=None, 
+    def setParam(self, wei_time=None, wei_feas=None, mini_T=None,
                  lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None,
+                 lbfgs_max_fun=None,
                  wei_obs=None, obs_safe_threshold=None,
-                 wei_sfc=None, sfc_safe_margin=None):
+                 wei_sfc=None, sfc_safe_margin=None,
+                 traj_resolution=None, destraj_resolution=None):
         """
         设置优化参数
-        
+
         参数:
             wei_time: 时间权重
             wei_feas: 可行性权重
             mini_T: 最小段时间
             lbfgs_memsize: L-BFGS 内存大小
             lbfgs_delta: L-BFGS 收敛判据
-            lbfgs_max_iterations: 最大迭代次数
+            lbfgs_max_iterations: 最大 L-BFGS 迭代次数（nit）
+            lbfgs_max_fun: 最大函数求值次数（nfev），直接决定最多执行多少次 cost 回调
             wei_obs: ESDF 方法障碍物权重
             obs_safe_threshold: ESDF 方法安全阈值
             wei_sfc: SFC 方法走廊约束权重
             sfc_safe_margin: SFC 方法安全裕量（距走廊边界最小距离）
+            traj_resolution: 中间段 ESDF/SFC 采样点数（越小越快，建议 6~16）
+            destraj_resolution: 起止段 ESDF/SFC 采样点数（建议 traj_resolution*2）
         """
         if wei_time is not None:
             self.wei_time = wei_time
@@ -373,6 +379,8 @@ class PolyTrajOptimizer:
             self.lbfgs_delta = lbfgs_delta
         if lbfgs_max_iterations is not None:
             self.lbfgs_max_iterations = lbfgs_max_iterations
+        if lbfgs_max_fun is not None:
+            self.lbfgs_max_fun = int(lbfgs_max_fun)
 
         if wei_obs is not None:
             self.wei_obs = float(wei_obs)
@@ -395,6 +403,24 @@ class PolyTrajOptimizer:
             self.sfc_safe_margin = float(sfc_safe_margin)
             for sfcConstr in getattr(self, 'sfcConstr_container', []):
                 sfcConstr.safe_margin = float(sfc_safe_margin)
+
+        if traj_resolution is not None:
+            self.traj_resolution = int(traj_resolution)
+            for c in getattr(self, 'obsConstr_container', []):
+                c.traj_resolution = int(traj_resolution)
+            for c in getattr(self, 'sfcConstr_container', []):
+                c.traj_resolution = int(traj_resolution)
+            for c in getattr(self, 'feasConstr_container', []):
+                c.traj_resolution = int(traj_resolution)
+
+        if destraj_resolution is not None:
+            self.destraj_resolution = int(destraj_resolution)
+            for c in getattr(self, 'obsConstr_container', []):
+                c.destraj_resolution = int(destraj_resolution)
+            for c in getattr(self, 'sfcConstr_container', []):
+                c.destraj_resolution = int(destraj_resolution)
+            for c in getattr(self, 'feasConstr_container', []):
+                c.destraj_resolution = int(destraj_resolution)
 
     def setDebugPrintEvery(self, n: int):
         """Set how often to print per-iteration cost diagnostics.
@@ -539,6 +565,7 @@ class PolyTrajOptimizer:
                 'ftol': self.lbfgs_delta,              # 1e-4（Dftpav）
                 'gtol': self.lbfgs_g_epsilon,          # 1e-16（Dftpav）
                 'maxls': 20,                            # 最大线搜索次数
+                'maxfun': self.lbfgs_max_fun,           # 最大函数求值次数（对应实时截止）
                 'disp': False                          # 不显示scipy优化器的详细信息
             }
         )
