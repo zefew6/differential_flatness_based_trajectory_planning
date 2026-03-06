@@ -74,14 +74,14 @@ def main():
     optimizer.setGridMap(grid_map)
 
     pruned    = optimizer.preprocessPath(path)
-    resampled = optimizer.resamplePath(pruned, max_seg_len=3, dense_path=path)
+    resampled = optimizer.resamplePath(pruned, max_seg_len=4, dense_path=path)
     inner_pts = resampled[1:-1]
     full_pts  = np.vstack([head_pos, inner_pts, tail_pos])
     print(f"A* {len(path)} pts → pruned {len(pruned)} → resampled {len(resampled)}")
 
     # ── SFC 走廊（仅 sfc 方法）──────────────────────────────────────────
     if method == "sfc":
-        optimizer.buildSFCCorridors(full_pts, search_radius=6.0)
+        optimizer.buildSFCCorridors(full_pts, search_radius=6.0, method='cube')
         optimizer.setParam(sfc_safe_margin=0.0, wei_sfc=1e5)
 
     # ── MINCO 优化 ───────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ def main():
         initTs=np.array([np.sum(durations)]),
         initSegTs=[durations],
     )
-    print(f"优化完成，耗时 {time.time()-t0:.2f}s")
+    print(f"优化完成，耗时 {(time.time()-t0)*1000:.2f}ms")
 
     # 重建 MINCO 对象（支持 eval() 接口）
     opt_traj   = optimizer.getOptimizedTrajectories()[0]

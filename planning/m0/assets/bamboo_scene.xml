@@ -1,0 +1,236 @@
+<mujoco>
+  <!--
+    bamboo_scene.xml
+    竹林场景：10 x 10 m 地面，四周围墙，35 根圆柱形竹子随机分布。
+    起点：(-4.0, 4.0)   终点：(3.8, 0.0)
+    两端各保留约 1.0 m 净空间。
+  -->
+  <compiler autolimits="true"/>
+
+  <asset>
+    <!-- 青绿色草地纹理 -->
+    <texture name="grass" type="2d" builtin="checker" width="512" height="512"
+             rgb1=".15 .28 .15" rgb2=".20 .35 .18"/>
+    <material name="grass" texture="grass" texrepeat="6 6" texuniform="true" reflectance=".1"/>
+
+    <!-- 竹竿纹理（偏黄绿棋盘） -->
+    <texture name="bamboo_tex" type="2d" builtin="checker" width="64" height="256"
+             rgb1=".30 .62 .22" rgb2=".42 .72 .28"/>
+    <material name="bamboo_mat" texture="bamboo_tex" texrepeat="1 4" reflectance=".05"/>
+
+    <mesh name="chasis" scale=".01 .006 .0015"
+      vertex=" 9   2   0
+              -10  10  10
+               9  -2   0
+               10  3  -10
+               10 -3  -10
+              -8   10 -10
+              -10 -10  10
+              -8  -10 -10
+              -5   0   20"/>
+  </asset>
+
+  <default>
+    <joint damping=".008" actuatorfrcrange="-4 4"/>
+    <default class="wheel">
+      <geom type="cylinder" size=".03 .01" rgba=".5 .5 1 1"/>
+    </default>
+    <default class="decor">
+      <site type="box" rgba=".5 1 .5 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <!-- 10×10 m 草地地面，以 (0,0) 为中心 -->
+    <geom name="floor" type="plane" size="6 6 .01" material="grass" pos="0 0 0"/>
+
+    <!-- ──────────────── Robot ──────────────── -->
+    <body name="pusher1" pos="0 0 .03">
+      <freejoint/>
+      <geom name="base"
+            type="cylinder"
+            pos="0 0 0.03"
+            size="0.15 0.03"
+            rgba="1.0 0.6 0.2 1"/>
+      <geom type="box" pos="0.16 0 0.03" size="0.01 0.14 0.05" rgba="1 1 1 1"/>
+      <geom name="front wheel" pos="0.12 0 -.015"
+            type="sphere" size=".015" condim="1" priority="1"/>
+      <body name="left wheel" pos="-.02 .16 0" zaxis="0 1 0">
+        <joint name="left"/>
+        <geom class="wheel"/>
+        <site class="decor" size=".006 .025 .012"/>
+        <site class="decor" size=".025 .006 .012"/>
+      </body>
+      <body name="right wheel" pos="-.02 -.16 0" zaxis="0 1 0">
+        <joint name="right"/>
+        <geom class="wheel"/>
+        <site class="decor" size=".006 .025 .012"/>
+        <site class="decor" size=".025 .006 .012"/>
+      </body>
+    </body>
+
+    <!-- ──────────────── 四周围墙 ──────────────── -->
+    <geom name="wall_north" type="box" pos=" 0.0  4.8 0.35" size="4.8 0.05 0.35" rgba=".55 .35 .15 1"/>
+    <geom name="wall_south" type="box" pos=" 0.0 -4.8 0.35" size="4.8 0.05 0.35" rgba=".55 .35 .15 1"/>
+    <geom name="wall_west"  type="box" pos="-4.8  0.0 0.35" size="0.05 4.8 0.35" rgba=".55 .35 .15 1"/>
+    <geom name="wall_east"  type="box" pos=" 4.8  0.0 0.35" size="0.05 4.8 0.35" rgba=".55 .35 .15 1"/>
+
+    <!-- ════════════════════════════════════════════════
+         竹子（圆柱障碍）共 80 根
+         size="r  half_h"   half_h ≈ 0.25~0.35
+         rgba 在五种青绿色中循环
+         起点 (-4.0, 4.0) 半径 1.0 m 净空
+         终点 ( 3.8, 0.0) 半径 1.0 m 净空
+    ════════════════════════════════════════════════ -->
+
+    <!-- ── 原有排 A  y ≈ 4.4（最北，起点以南）── -->
+    <geom name="bam_01" type="cylinder" pos="-3.00  4.40 0.30" size="0.09 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_02" type="cylinder" pos="-1.30  4.20 0.28" size="0.08 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_03" type="cylinder" pos=" 0.20  4.40 0.32" size="0.10 0.32" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_04" type="cylinder" pos=" 1.70  4.30 0.30" size="0.09 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_05" type="cylinder" pos=" 3.20  4.40 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 B  y ≈ 3.5 ── -->
+    <geom name="bam_06" type="cylinder" pos="-2.20  3.70 0.30" size="0.09 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_07" type="cylinder" pos="-1.20  3.80 0.28" size="0.08 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_08" type="cylinder" pos="-0.10  3.55 0.32" size="0.10 0.32" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_09" type="cylinder" pos=" 1.00  3.70 0.30" size="0.09 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_10" type="cylinder" pos=" 2.20  3.50 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_11" type="cylinder" pos=" 3.50  3.80 0.30" size="0.10 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+
+    <!-- ── 补充排 C  y ≈ 2.9（插在 B/D 之间）── -->
+    <geom name="bam_12" type="cylinder" pos="-4.20  2.90 0.32" size="0.09 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_13" type="cylinder" pos="-3.10  2.80 0.28" size="0.08 0.28" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_14" type="cylinder" pos="-1.80  2.90 0.30" size="0.11 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_15" type="cylinder" pos="-0.60  2.80 0.28" size="0.09 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_16" type="cylinder" pos=" 0.50  2.90 0.32" size="0.10 0.32" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_17" type="cylinder" pos=" 1.55  2.80 0.30" size="0.09 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_18" type="cylinder" pos=" 2.80  2.90 0.28" size="0.08 0.28" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_19" type="cylinder" pos=" 4.10  2.80 0.30" size="0.10 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 D  y ≈ 2.1 ── -->
+    <geom name="bam_20" type="cylinder" pos="-3.60  2.30 0.30" size="0.10 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_21" type="cylinder" pos="-2.30  2.00 0.32" size="0.09 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_22" type="cylinder" pos="-1.00  2.25 0.30" size="0.11 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_23" type="cylinder" pos=" 0.20  2.10 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_24" type="cylinder" pos=" 1.30  2.30 0.30" size="0.10 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_25" type="cylinder" pos=" 2.50  2.10 0.28" size="0.09 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_26" type="cylinder" pos=" 3.70  2.30 0.32" size="0.10 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+
+    <!-- ── 补充排 E  y ≈ 1.55（插在 D/F 之间）── -->
+    <geom name="bam_27" type="cylinder" pos="-4.20  1.55 0.30" size="0.09 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_28" type="cylinder" pos="-3.00  1.55 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_29" type="cylinder" pos="-1.70  1.55 0.32" size="0.10 0.32" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_30" type="cylinder" pos="-0.40  1.55 0.30" size="0.09 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_31" type="cylinder" pos=" 0.80  1.55 0.28" size="0.08 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_32" type="cylinder" pos=" 2.00  1.55 0.30" size="0.10 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_33" type="cylinder" pos=" 3.30  1.55 0.32" size="0.09 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 F  y ≈ 0.75（避开终点）── -->
+    <geom name="bam_34" type="cylinder" pos="-4.20  0.90 0.30" size="0.10 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_35" type="cylinder" pos="-3.10  0.75 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_36" type="cylinder" pos="-2.00  0.90 0.32" size="0.09 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_37" type="cylinder" pos="-0.90  0.75 0.30" size="0.11 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_38" type="cylinder" pos=" 0.30  0.90 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_39" type="cylinder" pos=" 1.40  0.75 0.30" size="0.10 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_40" type="cylinder" pos=" 2.60  0.90 0.28" size="0.09 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+
+    <!-- ── 补充排 G  y ≈ 0.0（避开起点 -4.5,0.0 和终点 4.3,0.0）── -->
+    <geom name="bam_41" type="cylinder" pos="-3.40  0.05 0.30" size="0.09 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_42" type="cylinder" pos="-2.80  0.05 0.32" size="0.10 0.32" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_43" type="cylinder" pos="-1.60  0.00 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_44" type="cylinder" pos="-0.40  0.05 0.30" size="0.09 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_45" type="cylinder" pos=" 0.80  0.00 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_46" type="cylinder" pos=" 2.00  0.05 0.30" size="0.10 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 H  y ≈ -0.7（避开终点）── -->
+    <geom name="bam_47" type="cylinder" pos="-4.10 -0.50 0.30" size="0.09 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_48" type="cylinder" pos="-3.00 -0.65 0.32" size="0.10 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_49" type="cylinder" pos="-2.00 -0.75 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_50" type="cylinder" pos="-0.80 -0.55 0.30" size="0.11 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_51" type="cylinder" pos=" 0.40 -0.70 0.28" size="0.09 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_52" type="cylinder" pos=" 1.60 -0.55 0.30" size="0.10 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_53" type="cylinder" pos=" 2.70 -0.70 0.32" size="0.09 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+
+    <!-- ── 补充排 I  y ≈ -1.4 ── -->
+    <geom name="bam_54" type="cylinder" pos="-4.20 -1.40 0.30" size="0.09 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_55" type="cylinder" pos="-3.10 -1.40 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_56" type="cylinder" pos="-1.90 -1.40 0.32" size="0.10 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_57" type="cylinder" pos="-0.60 -1.40 0.30" size="0.09 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_58" type="cylinder" pos=" 0.60 -1.40 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_59" type="cylinder" pos=" 1.80 -1.40 0.30" size="0.10 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_60" type="cylinder" pos=" 3.00 -1.40 0.32" size="0.09 0.32" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_61" type="cylinder" pos=" 4.20 -1.40 0.28" size="0.08 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 J  y ≈ -2.1 ── -->
+    <geom name="bam_62" type="cylinder" pos="-3.80 -2.10 0.30" size="0.10 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_63" type="cylinder" pos="-2.70 -2.30 0.32" size="0.09 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_64" type="cylinder" pos="-1.50 -2.10 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_65" type="cylinder" pos="-0.30 -2.30 0.30" size="0.11 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_66" type="cylinder" pos=" 0.90 -2.10 0.28" size="0.09 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_67" type="cylinder" pos=" 2.20 -2.30 0.30" size="0.10 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_68" type="cylinder" pos=" 3.50 -2.10 0.32" size="0.09 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+
+    <!-- ── 补充排 K  y ≈ -2.8 ── -->
+    <geom name="bam_69" type="cylinder" pos="-4.10 -2.80 0.30" size="0.09 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_70" type="cylinder" pos="-2.90 -2.80 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_71" type="cylinder" pos="-1.60 -2.80 0.32" size="0.10 0.32" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_72" type="cylinder" pos="-0.30 -2.80 0.30" size="0.09 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_73" type="cylinder" pos=" 1.00 -2.80 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_74" type="cylinder" pos=" 2.30 -2.80 0.30" size="0.10 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_75" type="cylinder" pos=" 3.60 -2.80 0.32" size="0.09 0.32" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+
+    <!-- ── 原有排 L  y ≈ -3.5 ── -->
+    <geom name="bam_76" type="cylinder" pos="-3.80 -3.50 0.30" size="0.10 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_77" type="cylinder" pos="-2.60 -3.30 0.28" size="0.08 0.28" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_78" type="cylinder" pos="-1.40 -3.50 0.32" size="0.11 0.32" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_79" type="cylinder" pos="-0.20 -3.30 0.30" size="0.09 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_80" type="cylinder" pos=" 1.10 -3.50 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_81" type="cylinder" pos=" 2.40 -3.30 0.30" size="0.10 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_82" type="cylinder" pos=" 3.70 -3.50 0.32" size="0.09 0.32" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+
+    <!-- ── 最南排 M  y ≈ -4.3 ── -->
+    <geom name="bam_83" type="cylinder" pos="-4.20 -4.30 0.30" size="0.09 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_84" type="cylinder" pos="-3.00 -4.30 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_85" type="cylinder" pos="-1.60 -4.30 0.32" size="0.10 0.32" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_86" type="cylinder" pos="-0.20 -4.30 0.30" size="0.09 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_87" type="cylinder" pos=" 1.20 -4.30 0.28" size="0.08 0.28" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_88" type="cylinder" pos=" 2.60 -4.30 0.30" size="0.10 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_89" type="cylinder" pos=" 4.00 -4.30 0.32" size="0.09 0.32" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+
+    <!-- ── 散点补充（进一步填密）── -->
+    <geom name="bam_90" type="cylinder" pos="-1.80  3.30 0.28" size="0.08 0.28" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_91" type="cylinder" pos=" 0.85  3.10 0.30" size="0.09 0.30" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_92" type="cylinder" pos=" 2.85  3.15 0.28" size="0.08 0.28" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_93" type="cylinder" pos="-1.25  1.25 0.30" size="0.09 0.30" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_94" type="cylinder" pos=" 1.85  1.20 0.28" size="0.08 0.28" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+    <geom name="bam_95" type="cylinder" pos="-2.60 -1.15 0.30" size="0.09 0.30" rgba=".28 .65 .18 1" material="bamboo_mat"/>
+    <geom name="bam_96" type="cylinder" pos=" 1.20 -1.00 0.28" size="0.08 0.28" rgba=".35 .72 .22 1" material="bamboo_mat"/>
+    <geom name="bam_97" type="cylinder" pos="-3.00 -3.80 0.30" size="0.09 0.30" rgba=".22 .58 .14 1" material="bamboo_mat"/>
+    <geom name="bam_98" type="cylinder" pos=" 0.50 -3.90 0.28" size="0.08 0.28" rgba=".40 .75 .12 1" material="bamboo_mat"/>
+    <geom name="bam_99" type="cylinder" pos=" 3.00 -4.00 0.30" size="0.09 0.30" rgba=".18 .52 .16 1" material="bamboo_mat"/>
+
+  </worldbody>
+
+  <!-- differential-drive tendon coupling -->
+  <tendon>
+    <fixed name="forward">
+      <joint joint="left"  coef=".5"/>
+      <joint joint="right" coef=".5"/>
+    </fixed>
+    <fixed name="turn">
+      <joint joint="left"  coef="-.5"/>
+      <joint joint="right" coef=".5"/>
+    </fixed>
+  </tendon>
+
+  <actuator>
+    <motor name="forward" tendon="forward" ctrlrange="-2 2"/>
+    <motor name="turn"    tendon="turn"    ctrlrange="-2 2"/>
+  </actuator>
+
+  <sensor>
+    <jointactuatorfrc name="right" joint="right"/>
+    <jointactuatorfrc name="left"  joint="left"/>
+  </sensor>
+</mujoco>
