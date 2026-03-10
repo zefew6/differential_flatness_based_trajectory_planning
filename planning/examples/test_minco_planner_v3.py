@@ -322,7 +322,7 @@ def main():
     next_inject_time = 2.0
     inject_interval = 2.2
     inject_jitter = 0.8
-    max_inject_count = 5
+    max_inject_count = 10
     injected_radius_min = 0.08
     injected_radius_max = 0.14
     injected_radii = []      # 每个障碍独立半径
@@ -393,17 +393,19 @@ def main():
                     print("[inject] 当前轨迹上暂无合适注入点，稍后重试")
 
             # 2) 在线重规划：仅在地图变化后触发
+            # if map_changed and (not follower.done) and (sim_time >= next_replan_time):
             if map_changed and (not follower.done) and (sim_time >= next_replan_time):
                 try:
-                    vel6 = robot.get_v()/30
+                    vel6 = robot.get_v()
                     pos = robot.get_pos()
-                    robot_vel = vel6[0:2]
+                    robot_vel = vel6[3:5]/ np.linalg.norm(vel6[3:5])/2
+                    print(robot_vel)
                     robot_pos = pos[0:2]
                     replan = optimizer.online_replan_once(
                         grid_map=grid_map,
                         start_xy=robot_pos,
                         goal_xy=tail_pos,
-                        max_seg_len=1.2,
+                        max_seg_len=0.8,
                         start_vel=robot_vel,
                     )
                     opt_minco = replan["minco"]
@@ -430,7 +432,7 @@ def main():
 
             if follower.done:
                 vel6  = robot.get_v()
-                v_now = np.hypot(vel6[0], vel6[1])
+                v_now = np.hypot(vel6[3], vel6[4])
                 if v_now > 0.08:
                     robot.set_ctrl(-np.clip(v_now * 2.0, 0.5, 2.0), 0.0)
                 else:

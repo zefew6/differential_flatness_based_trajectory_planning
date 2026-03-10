@@ -42,8 +42,8 @@ class PolyTrajOptimizer:
         self.obstacle_method = obstacle_method
 
         # 优化参数 - 平衡收敛性和约束满足
-        self.wei_time = 200.0       # 时间权重（高→规划器倾向短时间轨迹）
-        self.wei_feas = 5000.0      # 可行性权重（适中，避免梯度爆炸）
+        self.wei_time = 1e2       # 时间权重（高→规划器倾向短时间轨迹）
+        self.wei_feas = 2e4      # 可行性权重（适中，避免梯度爆炸）
         # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
         self.wei_obs = 1e4
         self.wei_surround = 5000.0 # 动态障碍物权重
@@ -55,8 +55,8 @@ class PolyTrajOptimizer:
         self.mini_T = 0.005         # 最小段时间（Dftpav: 0.1）
         
         # 动力学约束参数 - 参考 Dftpav
-        self.max_vel = 4.0         # 最大速度 (m/s)
-        self.max_acc = 1.0         # 最大加速度 (m/s²)
+        self.max_vel = 3.5         # 最大速度 (m/s)
+        self.max_acc = 0.8         # 最大加速度 (m/s²)
         
         # L-BFGS 优化器参数
         self.lbfgs_memsize = 256   # 内存大小（Dftpav: 256）

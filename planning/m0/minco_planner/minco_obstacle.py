@@ -1110,3 +1110,159 @@ def build_sfc_from_gridmap(grid_map, waypoints,
         n_bins=n_bins,
         map_bounds=map_bounds,
     )
+
+
+# ------------------------------------------------------------------
+# SFC Visualization / drawing helpers
+# ------------------------------------------------------------------
+def _clip_polygon_with_halfplane(poly, n, b, eps=1e-9):
+    """用半平面 n^T x <= b 裁剪凸/任意多边形 poly（list/ndarray Nx2）。"""
+    if poly is None or len(poly) == 0:
+        return []
+    out = []
+    pts = [tuple(p) for p in poly]
+    N = len(pts)
+    def inside(p):
+        return (n[0] * p[0] + n[1] * p[1]) <= b + eps
+
+    for i in range(N):
+        a = pts[i]
+        bpt = pts[(i + 1) % N]
+        a_in = inside(a)
+        b_in = inside(bpt)
+        if a_in and b_in:
+            out.append(bpt)
+        elif a_in and not b_in:
+            # a in, b out -> append intersection
+            denom = n[0] * (bpt[0] - a[0]) + n[1] * (bpt[1] - a[1])
+            if abs(denom) > 1e-12:
+                t = (b - (n[0] * a[0] + n[1] * a[1])) / denom
+                t = np.clip(t, 0.0, 1.0)
+                inter = (a[0] + t * (bpt[0] - a[0]), a[1] + t * (bpt[1] - a[1]))
+                out.append(inter)
+        elif (not a_in) and b_in:
+            # a out, b in -> append intersection then b
+            denom = n[0] * (bpt[0] - a[0]) + n[1] * (bpt[1] - a[1])
+            if abs(denom) > 1e-12:
+                t = (b - (n[0] * a[0] + n[1] * a[1])) / denom
+                t = np.clip(t, 0.0, 1.0)
+                inter = (a[0] + t * (bpt[0] - a[0]), a[1] + t * (bpt[1] - a[1]))
+                out.append(inter)
+            out.append(bpt)
+        else:
+            # both out -> nothing
+            pass
+    return out
+
+
+def _halfplanes_to_convex_polygon(hPoly, clip_box=None, fallback_radius=100.0):
+    """将一组半平面 (K,3) 转为凸多边形顶点列表。
+
+    hPoly: array_like of shape (K,3) 每行 [nx, ny, b] 表示 nx*x + ny*y <= b
+    clip_box: (xmin, ymin, xmax, ymax) 若提供则作为初始裁剪多边形
+    返回: Nx2 ndarray 顶点（顺时针或逆时针），若不可行返回空列表
+    """
+    if hPoly is None or len(hPoly) == 0:
+        return []
+    hp = np.asarray(hPoly, dtype=np.float64)
+
+    if clip_box is not None:
+        xmin, ymin, xmax, ymax = clip_box
+    else:
+        # 以原点为中心的较大方框
+        xmin = -fallback_radius
+        ymin = -fallback_radius
+        xmax = fallback_radius
+        ymax = fallback_radius
+
+    poly = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
+
+    for plane in hp:
+        n = plane[:2]
+        b = float(plane[2])
+        poly = _clip_polygon_with_halfplane(poly, n, b)
+        if not poly:
+            return []
+
+    return np.array(poly, dtype=np.float64)
+
+
+def draw_sfc_corridors(hPolys_per_piece, grid_map=None, ax=None,
+                       face_color='cyan', edge_color='k', alpha=0.25, zorder=2):
+    """在 matplotlib 轴上绘制 SFC 走廊。
+
+    参数
+    - hPolys_per_piece: list 每段的 hPoly（或 None），hPoly shape (K,3)
+    - grid_map: 若提供则用其边界作为初始裁剪框
+    - ax: matplotlib.axes.Axes，可选。不提供则会尝试导入并创建新 figure
+
+    返回
+    - polys: list of ndarray (Ni,2) 绘制的多边形顶点
+    """
+    try:
+        import matplotlib.pyplot as _plt
+        from matplotlib.patches import Polygon as _Polygon
+    except Exception as e:
+        raise RuntimeError('matplotlib is required for draw_sfc_corridors') from e
+
+    if ax is None:
+        fig, ax = _plt.subplots()
+
+    clip_box = None
+    if grid_map is not None and hasattr(grid_map, 'min_boundary') and hasattr(grid_map, 'max_boundary'):
+        mn = grid_map.min_boundary
+        mx = grid_map.max_boundary
+        clip_box = (float(mn[0]), float(mn[1]), float(mx[0]), float(mx[1]))
+
+    polys = []
+    for hPoly in hPolys_per_piece:
+        if hPoly is None:
+            continue
+        poly = _halfplanes_to_convex_polygon(hPoly, clip_box=clip_box)
+        if poly is None or len(poly) == 0:
+            continue
+        patch = _Polygon(poly, closed=True, facecolor=face_color, edgecolor=edge_color, alpha=alpha, zorder=zorder)
+        ax.add_patch(patch)
+        polys.append(poly)
+
+    return polys
+
+
+def draw_sfc_in_mujoco(viewer, hPolys_per_piece, grid_map=None, z=0.02,
+                       edge_rgba=np.array([0.0, 0.6, 1.0, 1.0]),
+                       center_rgba=np.array([0.0, 0.6, 1.0, 0.25]),
+                       edge_width=0.003, center_size=0.03):
+    """在 MuJoCo `MujocoViewer` 上绘制 SFC 走廊的边界（线段）和中心点。
+
+    - viewer: `MujocoViewer` 实例，需暴露 `draw_line_segment` 和 `draw_point`。
+    - hPolys_per_piece: list 每段的半平面数组 (K,3)
+    - grid_map: 可选，用于裁剪多边形边界
+    """
+    clip_box = None
+    if grid_map is not None and hasattr(grid_map, 'min_boundary') and hasattr(grid_map, 'max_boundary'):
+        mn = grid_map.min_boundary
+        mx = grid_map.max_boundary
+        clip_box = (float(mn[0]), float(mn[1]), float(mx[0]), float(mx[1]))
+
+    for hPoly in hPolys_per_piece:
+        if hPoly is None:
+            continue
+        poly = _halfplanes_to_convex_polygon(hPoly, clip_box=clip_box)
+        if poly is None or len(poly) < 2:
+            continue
+        # draw edges
+        N = len(poly)
+        for i in range(N):
+            p0 = poly[i]
+            p1 = poly[(i + 1) % N]
+            try:
+                viewer.draw_line_segment([p0[0], p0[1], z], [p1[0], p1[1], z], width=edge_width, rgba=edge_rgba)
+            except Exception:
+                # best-effort drawing; continue on failure
+                pass
+        # draw centroid as translucent marker
+        centroid = np.mean(poly, axis=0)
+        try:
+            viewer.draw_point([centroid[0], centroid[1], z], size=center_size, rgba=center_rgba)
+        except Exception:
+            pass

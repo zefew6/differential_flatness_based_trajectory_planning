@@ -36,7 +36,7 @@ if planning_root not in sys.path:
 
 from m0.minco_planner import PolyTrajOptimizer
 from m0.planning.a_star import graph_search
-from m0.minco_planner.minco_obstacle import GridMap2D
+from m0.minco_planner.minco_obstacle import GridMap2D, build_sfc_from_gridmap, draw_sfc_corridors
 from m0.viewer.mujoco_visualization import MujocoViewer
 from m0.robot.robot import Robot
 from m0.control import TrajectoryFollower
@@ -303,6 +303,30 @@ def main():
     xyz_resampled = to_xyz(resampled, z=0.06)
     xyz_opt       = to_xyz(sample_traj_xy(opt_minco, n=1000), z=0.08)
 
+    # 若使用 SFC 方法，则构建走廊并保存一张 Matplotlib 预览图（不影响 MuJoCo 窗口）
+    if method == 'sfc':
+        try:
+            hPolys = build_sfc_from_gridmap(grid_map, resampled, method='legacy')
+            import matplotlib.pyplot as plt
+
+            fig, ax = plt.subplots(figsize=(6, 6))
+            # 绘制走廊
+            polys = draw_sfc_corridors(hPolys, grid_map=grid_map, ax=ax, alpha=0.25)
+            # 绘制 A* 路径 / resampled / 优化轨迹投影
+            path_xy = np.array(path)
+            res_xy = np.array(resampled)
+            opt_xy = sample_traj_xy(opt_minco, n=400)
+            ax.plot(path_xy[:, 0], path_xy[:, 1], 'r.-', label='A* path')
+            ax.plot(res_xy[:, 0], res_xy[:, 1], 'orange', marker='o', markersize=2, linestyle='None', label='resampled')
+            ax.plot(opt_xy[:, 0], opt_xy[:, 1], 'g-', linewidth=1.0, label='opt traj')
+            ax.set_aspect('equal', 'box')
+            ax.set_title('SFC corridors (preview)')
+            ax.legend()
+
+            plt.close(fig)
+        except Exception as e:
+            print(f"[SFC] 生成/绘制走廊失败: {e}")
+
     # ── 机器人初始化 ──────────────────────────────────────────────────────
     _, first_vel, _ = opt_minco.eval(0.05)
     init_yaw = np.arctan2(first_vel[1] + 1e-9, first_vel[0] + 1e-9)
@@ -359,6 +383,17 @@ def main():
             ref_p = follower.ref_point
             mjv.draw_point(np.array([ref_p[0], ref_p[1], 0.10]),
                            size=0.08, rgba=np.array([1.0, 1.0, 0.0, 1.0]))
+            # 如果使用 SFC 方法，绘制走廊到 MuJoCo 窗口（实时）
+            if method == 'sfc' and 'hPolys' in locals():
+                try:
+                    from m0.minco_planner.minco_obstacle import draw_sfc_in_mujoco
+                    draw_sfc_in_mujoco(mjv, hPolys, grid_map=grid_map,
+                                       z=0.02,
+                                       edge_rgba=np.array([0.0, 0.6, 1.0, 1.0]),
+                                       center_rgba=np.array([0.0, 0.6, 1.0, 0.18]),
+                                       edge_width=0.003, center_size=0.03)
+                except Exception:
+                    pass
             mjv.render()
 
     except KeyboardInterrupt:

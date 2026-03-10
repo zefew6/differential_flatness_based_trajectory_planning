@@ -55,7 +55,8 @@ class Robot:
 
     def get_v(self):
         """
-        return body's [vx, vy, vz, wx, wy, wz]
+        return body's [vx, vy, vz, wx, wy, wz] x
+        it shoud be [wx wy wz vx vy vz]
         """
         vel6 = self.data.cvel[self.robot_id].copy()
         return vel6
