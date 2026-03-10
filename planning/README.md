@@ -32,11 +32,14 @@ git clone git@github.com:KANZEZ/m0.git
 3. create your own virtual env
 ```
 python3 -m venv your_env
+
+#uv venv your_env --python 3.10
 ```
 
 4. in your virtual env, install the packages
 ```
 pip3 install -e . 
+#uv pip install -e .
 ```
 
 5. run some examples in m0/examples folder to see if success
@@ -121,6 +124,5 @@ python3 examples/test_kinorrt.py
 python3 examples/test_rl.py
 ```
 ![rl](media/rl.gif)
-
 
 

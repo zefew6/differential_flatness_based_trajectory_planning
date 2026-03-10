@@ -291,7 +291,47 @@ class MinJerkOpt:
         # 航点梯度：dJ/dP_i 只受 b[6i+5] 影响
         idx_P = np.arange(M - 1) * 6 + 5
         self.gdP = lambda_all[idx_P, :]          # (M-1, 2)
+        # '''
+        # ── 时间梯度：dW/dT_i = dK/dT_i - Tr{G^T * dM/dT_i * c} ─────────
+        # self.gdT 已由 initSmGradCost() 填入显式项 dK/dT_i，
+        # 此处再减去伴随校正项（对应论文公式 66/68）。
+        # dM/dT_i 只影响第 i 段末端的约束行，逐段计算后累减。
+        C = self.coeffs.reshape(M, 6, 2)   # (M, 6, 2)
 
+        for i in range(M - 1):
+            Ti = self.T[i]
+            c = C[i]                        # (6, 2)
+            c1, c2, c3, c4, c5 = c[1], c[2], c[3], c[4], c[5]
+
+            # 第 i 段末端各阶导数（dM/dT_i 的非零列向量）
+            vel_end  = c1 + 2*Ti*c2 + 3*Ti**2*c3 + 4*Ti**3*c4 + 5*Ti**4*c5
+            acc_end  = 2*c2 + 6*Ti*c3 + 12*Ti**2*c4 + 20*Ti**3*c5
+            jerk_end = 6*c3 + 24*Ti*c4 + 60*Ti**2*c5
+            snap_end = 24*c4 + 120*Ti*c5
+
+            self.gdT[i] -= (
+                np.sum(lambda_all[6*i + 3, :] * snap_end)  +   # jerk 连续行
+                np.sum(lambda_all[6*i + 4, :] * (120*c5))  +   # snap 连续行
+                np.sum(lambda_all[6*i + 5, :] * vel_end)   +   # 航点行
+                np.sum(lambda_all[6*i + 6, :] * vel_end)   +   # 位置连续行
+                np.sum(lambda_all[6*i + 7, :] * acc_end)   +   # 速度连续行
+                np.sum(lambda_all[6*i + 8, :] * jerk_end)      # 加速度连续行
+            )
+
+        # 最后一段：末端边界条件行依赖 T_{M-1}
+        T_last = self.T[M - 1]
+        c = C[M - 1]
+        c1, c2, c3, c4, c5 = c[1], c[2], c[3], c[4], c[5]
+        vel_end  = c1 + 2*T_last*c2 + 3*T_last**2*c3 + 4*T_last**3*c4 + 5*T_last**4*c5
+        acc_end  = 2*c2 + 6*T_last*c3 + 12*T_last**2*c4 + 20*T_last**3*c5
+        jerk_end = 6*c3 + 24*T_last*c4 + 60*T_last**2*c5
+
+        self.gdT[M - 1] -= (
+            np.sum(lambda_all[n - 3, :] * vel_end)  +   # 终止位置行
+            np.sum(lambda_all[n - 2, :] * acc_end)  +   # 终止速度行
+            np.sum(lambda_all[n - 1, :] * jerk_end)     # 终止加速度行
+        )
+        # '''
         # 起始/终止状态梯度
         self.gdHead = lambda_all[[0, 1, 2], :]   # (3, 2)
         self.gdTail = lambda_all[[n-3, n-2, n-1], :]  # (3, 2)

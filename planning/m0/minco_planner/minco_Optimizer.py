@@ -962,7 +962,8 @@ class PolyTrajOptimizer:
             
             # 航点梯度 (已经通过伴随方法包含了约束的影响)
             gradP_container[trajid][:] = self.jerkOpt_container[trajid].get_gdP()
-            
+            gradT_container[trajid][:] = self.jerkOpt_container[trajid].get_gdT()
+
             # 时间梯度 (包含 Jerk + Constraint) - 每段独立
             piece_num = self.piece_num_container[trajid]
             gdRT_vec = self.jerkOpt_container[trajid].get_gdT()  # 每段的时间梯度向量
