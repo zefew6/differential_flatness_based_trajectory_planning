@@ -1,8 +1,16 @@
 import numpy as np
 from scipy.optimize import minimize
+from .costs import FeasibilityConstraint, ObstacleConstraint, SFCObstacleConstraint
+from .corridor import build_sfc_from_gridmap
 from .minco_MinJerkOpt import MinJerkOpt
-from .minco_FeasibilityConstraint import FeasibilityConstraint
-from .minco_obstacle import ObstacleConstraint, SFCObstacleConstraint
+from .path_tools import (
+    check_line_collision,
+    preprocess_path,
+    push_waypoints_to_clearance,
+    resample_path,
+    uniform_resample_path,
+)
+from .time_allocation import allocate_time, trapezoid_duration
 
 
 class PolyTrajOptimizer:
@@ -42,10 +50,10 @@ class PolyTrajOptimizer:
         self.obstacle_method = obstacle_method
 
         # 优化参数 - 平衡收敛性和约束满足
-        self.wei_time = 1e2       # 时间权重（高→规划器倾向短时间轨迹）
-        self.wei_feas = 2e4      # 可行性权重（适中，避免梯度爆炸）
+        self.wei_time = 1e2      # 时间权重（高→规划器倾向短时间轨迹）
+        self.wei_feas = 2e4     # 可行性权重（适中，避免梯度爆炸）
         # 静态障碍物权重：对齐 ST-opt-tools 里常用的 rho_collision=1e5 量级
-        self.wei_obs = 1e4
+        self.wei_obs = 2e4
         self.wei_surround = 5000.0 # 动态障碍物权重
         # 障碍安全距离（米）：ESDF 小于此值的点会被惩罚。
         # 需要大于地图中自由点的最小 ESDF（典型值 0.02~0.05m），
@@ -130,12 +138,12 @@ class PolyTrajOptimizer:
 
     def buildSFCCorridors(self, waypoints, search_radius: float = 6.0,
                           subsample: int = 2, n_bins: int = 36,
-                          method: str = 'cube',
+                          method: str = 'firi',
                           inflate_step_cells: int = 1) -> list:
         """从已设置的 grid_map 生成 SFC 走廊并自动注入到优化器。
 
-        委托给 minco_obstacle.build_sfc_from_gridmap 一步完成：
-            1. 按 method 选择走廊生成器（默认 cube 膨胀法）
+        委托给 corridor.build_sfc_from_gridmap 一步完成：
+            1. 按 method 选择走廊生成器（默认 FIRI）
             2. 为每段路径生成凸 hPoly 走廊
             3. 自动调用 setSFCCorridors
 
@@ -145,14 +153,14 @@ class PolyTrajOptimizer:
         search_radius : 走廊搜索半径（米），默认 6.0
         subsample     : legacy 方法下点云下采样步长，默认 2
         n_bins        : legacy 方法下角度分箱数，默认 36
-        method        : 'cube'（默认，栅格膨胀）或 'legacy'（点云分箱）
+        method        : 'firi'（默认，ST-opt-tools 风格）、
+                        'cube'（栅格膨胀）或 'legacy'（点云分箱）
         inflate_step_cells : cube 方法每轮每方向膨胀的格数，默认 1
 
         返回
         ----
         hPolys : list of np.ndarray，len = piece_num
         """
-        from .minco_obstacle import build_sfc_from_gridmap
         import time as _time
 
         if self.grid_map is None:
@@ -179,28 +187,7 @@ class PolyTrajOptimizer:
 
     def _check_line_collision(self, p1, p2) -> bool:
         """Bresenham 直线检测：p1→p2 之间是否经过占据格。有碰撞返回 True。"""
-        gm = self.grid_map
-        r1, c1 = gm.coor_to_index(p1)
-        r2, c2 = gm.coor_to_index(p2)
-        dr, dc = abs(r2 - r1), abs(c2 - c1)
-        sr = 1 if r2 > r1 else -1
-        sc = 1 if c2 > c1 else -1
-        err = dr - dc
-        r, c = r1, c1
-        while True:
-            idx = (r, c)
-            if gm.is_valid_index(idx) and gm.is_occupied_index(idx):
-                return True
-            if r == r2 and c == c2:
-                break
-            e2 = 2 * err
-            if e2 > -dc:
-                err -= dc
-                r += sr
-            if e2 < dr:
-                err += dr
-                c += sc
-        return False
+        return check_line_collision(self.grid_map, p1, p2)
 
     def preprocessPath(self, path) -> np.ndarray:
         """对 A* 原始路径做可见性剪枝，返回仅保留转角点的精简路径（含首尾）。
@@ -217,22 +204,7 @@ class PolyTrajOptimizer:
         """
         if self.grid_map is None:
             raise RuntimeError("Call setGridMap() before preprocessPath().")
-        path = np.asarray(path)
-        if len(path) <= 2:
-            return path
-        pruned = [path[0]]
-        prev = path[0]
-        i = 1
-        while i < len(path) - 1:
-            # 若能从 prev 直线无碰到 path[i+1]，则跳过 path[i]
-            if not self._check_line_collision(prev, path[i + 1]):
-                i += 1
-            else:
-                pruned.append(path[i])
-                prev = path[i]
-                i += 1
-        pruned.append(path[-1])
-        return np.array(pruned)
+        return preprocess_path(self.grid_map, path)
 
     def resamplePath(self, path, max_seg_len: float = 1.5,
                      dense_path: np.ndarray = None) -> np.ndarray:
@@ -256,56 +228,7 @@ class PolyTrajOptimizer:
         ----
         resampled : np.ndarray, shape (M, 2)，M >= N
         """
-        path = np.asarray(path, dtype=float)
-        if len(path) < 2:
-            return path
-
-        # ── 若提供稠密路径，在稀疏段间沿稠密路径抽取中间点 ──────────────────
-        if dense_path is not None:
-            dense_path = np.asarray(dense_path, dtype=float)
-            result = [path[0]]
-            for i in range(len(path) - 1):
-                p0, p1 = path[i], path[i + 1]
-                seg_len = np.linalg.norm(p1 - p0)
-                if seg_len > max_seg_len:
-                    # 在 dense_path 中找到属于本段的区间（最近邻索引）
-                    d0 = np.linalg.norm(dense_path - p0, axis=1)
-                    d1 = np.linalg.norm(dense_path - p1, axis=1)
-                    idx0 = int(np.argmin(d0))
-                    idx1 = int(np.argmin(d1))
-                    if idx0 > idx1:
-                        idx0, idx1 = idx1, idx0
-                    # 从稠密路径的对应区间中均匀抽取中间点
-                    segment = dense_path[idx0:idx1 + 1]
-                    if len(segment) > 2:
-                        n_insert = int(np.ceil(seg_len / max_seg_len)) - 1
-                        # 按弧长均匀抽取 n_insert 个中间点
-                        arc = np.cumsum(
-                            np.r_[0, np.linalg.norm(np.diff(segment, axis=0), axis=1)]
-                        )
-                        total_arc = arc[-1]
-                        for k in range(1, n_insert + 1):
-                            s = total_arc * k / (n_insert + 1)
-                            j = np.searchsorted(arc, s, side='right') - 1
-                            j = min(j, len(segment) - 2)
-                            alpha = (s - arc[j]) / (arc[j + 1] - arc[j] + 1e-12)
-                            pt = segment[j] + alpha * (segment[j + 1] - segment[j])
-                            result.append(pt)
-                result.append(p1)
-            return np.array(result)
-
-        # ── 退化模式：直线插值（无稠密路径时使用）────────────────────────────
-        result = [path[0]]
-        for i in range(len(path) - 1):
-            p0, p1 = path[i], path[i + 1]
-            seg_len = np.linalg.norm(p1 - p0)
-            if seg_len > max_seg_len:
-                n_insert = int(np.ceil(seg_len / max_seg_len)) - 1
-                for k in range(1, n_insert + 1):
-                    t = k / (n_insert + 1)
-                    result.append(p0 + t * (p1 - p0))
-            result.append(p1)
-        return np.array(result)
+        return resample_path(path, max_seg_len=max_seg_len, dense_path=dense_path)
 
     def uniform_resample_path(self, path: np.ndarray,
                               max_seg_len: float = 3.0) -> np.ndarray:
@@ -322,25 +245,7 @@ class PolyTrajOptimizer:
         ----
         resampled : np.ndarray, shape (M, 2)
         """
-        path = np.asarray(path, dtype=float)
-        if len(path) < 2:
-            return path
-
-        seg_lens = np.linalg.norm(np.diff(path, axis=0), axis=1)
-        total_len = float(np.sum(seg_lens))
-        piece_nums = max(int(total_len / max_seg_len + 0.5), 2)
-
-        cum_dist = np.concatenate([[0.0], np.cumsum(seg_lens)])
-        sample_dists = np.linspace(0.0, total_len, piece_nums + 1)
-
-        result = []
-        for d in sample_dists:
-            idx = int(np.searchsorted(cum_dist, d, side='right')) - 1
-            idx = np.clip(idx, 0, len(path) - 2)
-            denom = cum_dist[idx + 1] - cum_dist[idx]
-            alpha = (d - cum_dist[idx]) / (denom + 1e-12)
-            result.append(path[idx] + alpha * (path[idx + 1] - path[idx]))
-        return np.array(result)
+        return uniform_resample_path(path, max_seg_len=max_seg_len)
 
     def push_waypoints_to_clearance(self,
                                     waypoints: np.ndarray,
@@ -350,19 +255,13 @@ class PolyTrajOptimizer:
         """将内点沿 ESDF 梯度方向推离障碍物（头尾不动）。"""
         if self.grid_map is None:
             raise RuntimeError("Call setGridMap() before push_waypoints_to_clearance().")
-
-        pts = np.asarray(waypoints, dtype=float).copy()
-        n_pts = len(pts)
-        for k in range(1, n_pts - 1):
-            for _ in range(max_iters):
-                dist, grad = self.grid_map.get_distance_and_gradient(pts[k])
-                if dist >= target_clearance:
-                    break
-                gnorm = np.linalg.norm(grad)
-                if gnorm < 1e-8:
-                    break
-                pts[k] += step_size * grad / gnorm
-        return pts
+        return push_waypoints_to_clearance(
+            self.grid_map,
+            waypoints,
+            max_iters=max_iters,
+            step_size=step_size,
+            target_clearance=target_clearance,
+        )
 
     def astar_path_to_follower_path(
         self,
@@ -376,7 +275,7 @@ class PolyTrajOptimizer:
         sfc_step_size: float = 0.05,
         sfc_target_clearance: float = 0.40,
         sfc_search_radius: float = 6.0,
-        sfc_build_method: str = 'legacy',
+        sfc_build_method: str = 'firi',
         sfc_safe_margin: float = 0.0,
         sfc_wei: float = 5e5,
     ):
@@ -493,7 +392,7 @@ class PolyTrajOptimizer:
         sfc_step_size: float = 0.05,
         sfc_target_clearance: float = 0.40,
         sfc_search_radius: float = 6.0,
-        sfc_build_method: str = 'legacy',
+        sfc_build_method: str = 'firi',
         sfc_safe_margin: float = 0.0,
         sfc_wei: float = 5e5,
     ) -> dict:
@@ -564,24 +463,11 @@ class PolyTrajOptimizer:
         durations : np.ndarray, shape (K-1,)
             每段的时间分配（秒）。
         """
-        waypoints = np.asarray(waypoints)
-        dists = np.linalg.norm(np.diff(waypoints, axis=0), axis=1)
-        durations = np.array([self._trapezoid_duration(d) for d in dists])
-        # 保证不低于最小段时间
-        return np.maximum(durations, self.mini_T)
+        return allocate_time(waypoints, self.max_vel, self.max_acc, self.mini_T)
 
     def _trapezoid_duration(self, length: float) -> float:
         """单段梯形速度曲线时间（起止速度均为 0）。"""
-        v = self.max_vel
-        a = self.max_acc
-        if length < 1e-6:
-            return self.mini_T
-        critical_len = v * v / a          # 刚好能加速到 max_vel 再减速所需路程
-        if length >= critical_len:
-            return 2.0 * v / a + (length - critical_len) / v
-        else:
-            v_peak = np.sqrt(a * length)  # 三角形速度曲线
-            return 2.0 * v_peak / a
+        return trapezoid_duration(length, self.max_vel, self.max_acc, self.mini_T)
 
     def setParam(self, wei_time=None, wei_feas=None, mini_T=None,
                  lbfgs_memsize=None, lbfgs_delta=None, lbfgs_max_iterations=None,
@@ -1054,7 +940,7 @@ class PolyTrajOptimizer:
                     pass
 
             print(msg)
-
+            # grad = np.zeros_like(x)
         return total_cost, grad
     
     def RealT2VirtualT(self, RT, VT):

@@ -306,7 +306,7 @@ def main():
     # 若使用 SFC 方法，则构建走廊并保存一张 Matplotlib 预览图（不影响 MuJoCo 窗口）
     if method == 'sfc':
         try:
-            hPolys = build_sfc_from_gridmap(grid_map, resampled, method='legacy')
+            hPolys = build_sfc_from_gridmap(grid_map, resampled, method='cube')
             import matplotlib.pyplot as plt
 
             fig, ax = plt.subplots(figsize=(6, 6))

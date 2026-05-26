@@ -11,7 +11,6 @@ MINCO (Minimum Control) 轨迹对象 - 二维版本
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 class MINCO:
@@ -218,6 +217,8 @@ class MINCO:
         - This method is used by `minco_test.py` for interactive visualization.
         - Returns (fig, axes) where axes is a 2x2 ndarray.
         """
+        import matplotlib.pyplot as plt
+
         t_total = float(np.sum(self.T))
         if t_total <= 0:
             raise ValueError("Trajectory total time must be positive.")

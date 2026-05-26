@@ -1,14 +1,8 @@
-from distutils.core import setup
-from os.path import isdir
-from itertools import product
-
-
-all_packages = ['m0']
-packages = list(filter(isdir, all_packages))
+from setuptools import find_packages, setup
 
 setup(
     name='m0',
-    packages=packages,
+    packages=find_packages(),
     version='1.1.0',
     install_requires=[
             'matplotlib',
@@ -39,6 +33,3 @@ setup(
             
             
 )
-
-
-    

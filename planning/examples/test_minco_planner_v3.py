@@ -322,7 +322,7 @@ def main():
     next_inject_time = 2.0
     inject_interval = 2.2
     inject_jitter = 0.8
-    max_inject_count = 10
+    max_inject_count = 5 #注入障碍物数量
     injected_radius_min = 0.08
     injected_radius_max = 0.14
     injected_radii = []      # 每个障碍独立半径
