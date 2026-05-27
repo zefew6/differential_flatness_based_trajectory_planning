@@ -8,6 +8,8 @@ MINCO 轨迹规划 + 微分平坦跟踪控制 一体化示例
     python examples/test_minco_planner.py
     # SFC 凸走廊方法
     python examples/test_minco_planner.py --method sfc
+    # 显式使用 FIRI 安全走廊
+    python examples/test_minco_planner.py --method sfc --sfc-method firi
 """
 
 import argparse
@@ -26,9 +28,8 @@ planning_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
-from m0.minco_planner import PolyTrajOptimizer
+from m0.minco_planner import MincoPlanner, MujocoGridMap2D
 from m0.planning.a_star import graph_search
-from m0.minco_planner.minco_obstacle import GridMap2D
 from m0.viewer.mujoco_visualization import MujocoViewer
 from m0.robot.robot import Robot
 from m0.control import TrajectoryFollower   # ← 跟踪控制器
@@ -45,9 +46,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", choices=["esdf", "sfc"], default="esdf",
                         help="障碍物方法：esdf（距离场）或 sfc（凸走廊）")
+    parser.add_argument("--sfc-method", choices=["firi", "cube", "legacy"], default="firi",
+                        help="SFC 走廊构建方法，仅 --method sfc 时生效")
     args   = parser.parse_args()
     method = args.method
-    print(f"[MINCO planner] method = {method}")
+    print(f"[MINCO planner] method={method}  sfc_method={args.sfc_method}")
 
     # ── MuJoCo ───────────────────────────────────────────────────────────
     xml_path = os.path.join(planning_root, "m0", "assets", "minco_scene.xml")
@@ -62,7 +65,7 @@ def main():
     head_pos = np.array([-4.0,  4.0])
     tail_pos = np.array([ 3.8,  0.0])
 
-    grid_map = GridMap2D(model=model, data=data, resolution=0.05,
+    grid_map = MujocoGridMap2D(model=model, data=data, resolution=0.05,
                          width=10.0, height=10.0, robot_radius=0.3,
                          margin=0.1, origin_x=-5.0, origin_y=-5.0)
     path = graph_search(start=head_pos, goal=tail_pos, gridmap=grid_map)
@@ -70,7 +73,7 @@ def main():
         raise RuntimeError("A* 找不到路径")
 
     # ── 路径预处理 ────────────────────────────────────────────────────────
-    optimizer = PolyTrajOptimizer(obstacle_method=method)
+    optimizer = MincoPlanner(obstacle_method=method)
     optimizer.setGridMap(grid_map)
 
     pruned    = optimizer.preprocessPath(path)
@@ -92,7 +95,7 @@ def main():
         max_seg_len=4.0,
         waypoints=full_pts,
         sfc_push_to_clearance=False,
-        sfc_build_method='cube',
+        sfc_build_method=args.sfc_method,
         sfc_safe_margin=0.0,
         sfc_wei=1e5,
     )

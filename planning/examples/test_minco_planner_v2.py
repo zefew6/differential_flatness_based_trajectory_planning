@@ -11,6 +11,8 @@ MINCO 轨迹规划 + 微分平坦跟踪控制 —— 随机竹林场景（v2）
     python examples/test_minco_planner_v2.py
     # SFC 凸走廊方法
     python examples/test_minco_planner_v2.py --method sfc
+    # 显式使用 FIRI 安全走廊
+    python examples/test_minco_planner_v2.py --method sfc --sfc-method firi
     # 固定随机种子（可复现）
     python examples/test_minco_planner_v2.py --seed 42
     # 指定竹子数量（默认 80）
@@ -34,9 +36,9 @@ planning_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if planning_root not in sys.path:
     sys.path.insert(0, planning_root)
 
-from m0.minco_planner import PolyTrajOptimizer
+from m0.minco_planner import MincoPlanner, MujocoGridMap2D
 from m0.planning.a_star import graph_search
-from m0.minco_planner.minco_obstacle import GridMap2D, build_sfc_from_gridmap, draw_sfc_corridors
+from m0.minco_planner.corridor import build_sfc_from_gridmap, draw_sfc_corridors
 from m0.viewer.mujoco_visualization import MujocoViewer
 from m0.robot.robot import Robot
 from m0.control import TrajectoryFollower
@@ -226,6 +228,8 @@ def main():
     parser = argparse.ArgumentParser(description="MINCO 规划随机竹林场景 (v2)")
     parser.add_argument("--method",   choices=["esdf", "sfc"], default="esdf",
                         help="障碍物方法：esdf 或 sfc")
+    parser.add_argument("--sfc-method", choices=["firi", "cube", "legacy"], default="firi",
+                        help="SFC 走廊构建方法，仅 --method sfc 时生效")
     parser.add_argument("--seed",     type=int, default=None,
                         help="随机种子（不指定则每次不同）")
     parser.add_argument("--n_bamboo", type=int, default=80,
@@ -234,7 +238,7 @@ def main():
     method = args.method
     seed   = args.seed
     n_bam  = args.n_bamboo
-    print(f"[MINCO planner v2 | bamboo scene] method={method}  n_bamboo={n_bam}  seed={seed}")
+    print(f"[MINCO planner v2 | bamboo scene] method={method}  sfc_method={args.sfc_method}  n_bamboo={n_bam}  seed={seed}")
 
     # ── 起终点（西侧 → 东侧，穿越整片竹林）──────────────────────────────
     head_pos = np.array([-4.5,  -4.5])   # 西侧中央，竹林入口
@@ -255,7 +259,7 @@ def main():
     mjv.set_camera(distance=22.0, azimuth=0, elevation=-35, lookat=[0, 0, 0])
 
     # ── 地图 & A* ────────────────────────────────────────────────────────
-    grid_map = GridMap2D(
+    grid_map = MujocoGridMap2D(
         model=model, data=data,
         resolution=0.05,
         width=10.0, height=10.0,
@@ -272,7 +276,7 @@ def main():
     #   piece_nums = max(int(totalDuration / timePerPiece + 0.5), 2)
     #   ego_innerPs.col(i) = evaluatePos(t).head(2)
     # 几何 A* 以弧长代替时间参数化，等价地在原始路径上等间隔采样。
-    optimizer = PolyTrajOptimizer(obstacle_method=method)
+    optimizer = MincoPlanner(obstacle_method=method)
     optimizer.setGridMap(grid_map)
 
     # max_seg_len 控制分段数（直接影响轨迹质量）：
@@ -289,6 +293,7 @@ def main():
         head_pva=head_pva,
         tail_pva=tail_pva,
         max_seg_len=1.2,
+        sfc_build_method=args.sfc_method,
     )
     print(f"A* {len(path)} pts → uniform resampled {len(resampled)} pts (Dftpav style)")
     print(f"优化完成，耗时 {(time.time()-t0)*1000:.2f}ms")
@@ -306,7 +311,7 @@ def main():
     # 若使用 SFC 方法，则构建走廊并保存一张 Matplotlib 预览图（不影响 MuJoCo 窗口）
     if method == 'sfc':
         try:
-            hPolys = build_sfc_from_gridmap(grid_map, resampled, method='cube')
+            hPolys = build_sfc_from_gridmap(grid_map, resampled, method=args.sfc_method)
             import matplotlib.pyplot as plt
 
             fig, ax = plt.subplots(figsize=(6, 6))
