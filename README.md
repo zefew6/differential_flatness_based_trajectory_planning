@@ -1,4 +1,5 @@
-<video src="planning/media/minco_planner_v3.mp4" controls width="720"></video>
+# Demo of MINCO Planner
+![MINCO online replanning demo](planning/media/minco_planner.gif)
 
 # Differential Flatness Based Trajectory Planning
 
